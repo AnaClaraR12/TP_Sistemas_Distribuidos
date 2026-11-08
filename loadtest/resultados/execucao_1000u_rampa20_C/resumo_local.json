@@ -1,0 +1,22 @@
+[
+  {
+    "cenario": "C_com_cache_3_replicas",
+    "replicas": 3,
+    "cache": true,
+    "usuarios": 1000,
+    "duracao_s": 90,
+    "requisicoes": 23657,
+    "falhas": 16989,
+    "rps": 264.4,
+    "p50_ms": 2000.0,
+    "p95_ms": 2100.0,
+    "p99_ms": 2100.0,
+    "busca_p50_ms": 2000.0,
+    "busca_p95_ms": 2100.0,
+    "taxa_erro_pct": 71.81,
+    "cache_hit_pct": 90.4,
+    "cpu_media_pct": 75.7,
+    "cpu_pico_pct": 158.5,
+    "mem_pico_mb": 355.5
+  }
+]

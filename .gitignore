@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+staticfiles/
+media/
+
+# Node
+node_modules/
+frontend/dist/
+.vite/
+
+# Segredos / ambiente
+.env
+secrets/*
+!secrets/.gitkeep
+*.pem
+*.key
+
+# Resultados locais
+loadtest/resultados/*.html
+.idea/
+.vscode/
+.DS_Store
+
+# artefatos do teste de carga local
+loadtest/resultados/_media/

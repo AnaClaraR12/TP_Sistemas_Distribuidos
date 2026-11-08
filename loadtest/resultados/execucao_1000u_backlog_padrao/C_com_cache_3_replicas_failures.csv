@@ -1,0 +1,7 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,busca /api/repositorio/monografias/?busca=,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",12274,2026-11-08T16:43:31Z,2026-11-08T16:44:21Z
+GET,detalhe /monografias/{id}/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",1605,2026-11-08T16:43:31Z,2026-11-08T16:44:21Z
+GET,listagem /api/repositorio/cursos/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",250,2026-11-08T16:43:31Z,2026-11-08T16:44:21Z
+GET,listagem /api/repositorio/orientadores/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",283,2026-11-08T16:43:31Z,2026-11-08T16:44:20Z
+GET,download /{id}/download/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",780,2026-11-08T16:43:31Z,2026-11-08T16:44:21Z
+GET,listagem /api/repositorio/monografias/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",256,2026-11-08T16:43:31Z,2026-11-08T16:44:21Z

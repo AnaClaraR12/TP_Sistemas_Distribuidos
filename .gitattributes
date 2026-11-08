@@ -1,0 +1,5 @@
+# Scripts e configs executados em containers Linux precisam de LF
+* text=auto eol=lf
+*.sh text eol=lf
+*.pdf binary
+*.png binary

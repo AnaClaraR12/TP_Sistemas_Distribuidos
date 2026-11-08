@@ -1,0 +1,106 @@
+# ---------------------------------------------------------------------------- upstreams
+# "resolve" (nginx >= 1.27.3) reconsulta o DNS do Docker: novas réplicas de
+# `docker compose up --scale <servico>=N` entram no balanceamento automaticamente.
+upstream auth_up         { zone auth_up 64k;         server auth-service:8001 resolve;         keepalive 32; }
+upstream monografias_up  { zone monografias_up 64k;  server monografias-service:8002 resolve;  keepalive 32; }
+upstream bancas_up       { zone bancas_up 64k;       server bancas-service:8003 resolve;       keepalive 32; }
+upstream repositorio_up  { zone repositorio_up 64k;  server repositorio-service:8004 resolve;  keepalive 64; }
+upstream notificacoes_up { zone notificacoes_up 64k; server notificacoes-service:8005 resolve; keepalive 16; }
+upstream relatorios_up   { zone relatorios_up 64k;   server relatorios-service:8006 resolve;   keepalive 16; }
+upstream frontend_up     { zone frontend_up 64k;     server frontend:80 resolve;               keepalive 16; }
+
+# ---------------------------------------------------------------------------- limites
+limit_req_zone $binary_remote_addr zone=repositorio:20m rate=${GATEWAY_RATE_REPOSITORIO};
+limit_req_zone $binary_remote_addr zone=login:10m rate=${GATEWAY_RATE_LOGIN};
+limit_req_status 429;
+
+# camada 1 de cache: respostas GET públicas do repositório (30 s)
+proxy_cache_path /var/cache/nginx/repositorio levels=1:2 keys_zone=repo_cache:50m max_size=500m inactive=10m use_temp_path=off;
+
+server {
+    listen 8080;
+    server_name _;
+
+    # ------------------------------------------------ cabeçalhos de segurança
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Request-ID $req_id always;
+
+    # ------------------------------------------------ proxy comum
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Request-ID $req_id;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+    proxy_next_upstream error timeout http_502 http_503;
+    proxy_next_upstream_tries 2;
+
+    # ------------------------------------------------ auth-service
+    location = /api/auth/token/ {
+        limit_req zone=login burst=${GATEWAY_BURST_LOGIN} nodelay;
+        proxy_pass http://auth_up;
+    }
+    location /api/auth/          { proxy_pass http://auth_up; }
+    location /.well-known/       { proxy_pass http://auth_up; }
+    location /admin/             { proxy_pass http://auth_up; }
+    location /static/auth/       { proxy_pass http://auth_up; }
+
+    # ------------------------------------------------ monografias-service
+    # uploads: limite 55 MB (o serviço valida 50 MB) apenas nestas rotas
+    location ~ ^/api/monografias/[0-9a-f-]+/(arquivo|documentos)/?$ {
+        client_max_body_size 55m;
+        client_body_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_pass http://monografias_up;
+    }
+    location /api/monografias    { proxy_pass http://monografias_up; }
+
+    # ------------------------------------------------ bancas-service (inclui /api/bancas/externo/* com token próprio)
+    location /api/bancas         { proxy_pass http://bancas_up; }
+    location /api/avaliacoes     { proxy_pass http://bancas_up; }
+
+    # ------------------------------------------------ repositorio-service (PÚBLICO)
+    location ~ ^/api/repositorio/monografias/[0-9a-f-]+/download/?$ {
+        limit_req zone=repositorio burst=${GATEWAY_BURST_REPOSITORIO} nodelay;
+        proxy_buffering off;   # streaming do PDF, sem cache
+        proxy_pass http://repositorio_up;
+    }
+    location /api/repositorio/ {
+        limit_req zone=repositorio burst=${GATEWAY_BURST_REPOSITORIO} nodelay;
+        proxy_cache repo_cache;
+        proxy_cache_methods GET HEAD;
+        proxy_cache_key "$request_method$host$request_uri";
+        proxy_cache_valid 200 30s;
+        proxy_ignore_headers Cache-Control Expires;  # TTL de borda = 30 s (o cliente ainda recebe max-age=60)
+        proxy_cache_lock on;                         # coalesce de requisições idênticas (anti-stampede)
+        proxy_cache_use_stale updating error timeout http_500 http_502 http_503;
+        proxy_cache_bypass $http_authorization;
+        proxy_no_cache $http_authorization;
+        add_header X-Proxy-Cache $upstream_cache_status always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Request-ID $req_id always;
+        proxy_pass http://repositorio_up;
+    }
+
+    # ------------------------------------------------ notificações / relatórios
+    location /api/notificacoes/  { proxy_pass http://notificacoes_up; }
+    location /api/relatorios/    { proxy_pass http://relatorios_up; }
+
+    # ------------------------------------------------ health do gateway
+    location = /gateway/health { access_log off; default_type application/json; return 200 '{"status":"ok"}'; }
+
+    # ------------------------------------------------ frontend (SPA React)
+    location / {
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        proxy_pass http://frontend_up;
+    }
+}

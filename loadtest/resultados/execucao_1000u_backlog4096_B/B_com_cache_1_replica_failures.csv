@@ -1,0 +1,8 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,busca /api/repositorio/monografias/?busca=,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",12171,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z
+GET,detalhe /monografias/{id}/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",1481,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z
+GET,listagem /api/repositorio/orientadores/,"ConnectionResetError(10054, 'Foi forçado o cancelamento de uma conexão existente pelo host remoto', None, 10054, None)",1,2026-11-08T16:45:44Z,2026-11-08T16:45:44Z
+GET,listagem /api/repositorio/cursos/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",259,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z
+GET,listagem /api/repositorio/orientadores/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",258,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z
+GET,download /{id}/download/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",745,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z
+GET,listagem /api/repositorio/monografias/,"ConnectionRefusedError(10061, '[WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.')",266,2026-11-08T16:45:46Z,2026-11-08T16:46:35Z

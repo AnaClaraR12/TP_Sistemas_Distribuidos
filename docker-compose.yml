@@ -1,0 +1,256 @@
+# Sistema Distribuído de Monografias — orquestração (Linux + Docker Compose)
+# Subir:  cp .env.example .env && make keys && make up
+name: tcc
+
+x-django: &django
+  env_file: .env
+  restart: unless-stopped
+  secrets:
+    - source: jwt_public
+      target: jwt_public.pem
+  networks: [interna]
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+x-worker: &worker
+  <<: *django
+  # workers não servem HTTP: o comando é o PID 1 (se morrer, o contêiner para/reinicia).
+  # Um healthcheck trivial permite `docker compose up --wait`.
+  healthcheck: { test: ["CMD", "true"], interval: 10s, timeout: 3s, retries: 3, start_period: 5s }
+  environment: &worker_env
+    RUN_MIGRATIONS: "0"
+
+services:
+  # ---------------------------------------------------------------- infraestrutura
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      DB_PASSWORD_AUTH: ${DB_PASSWORD_AUTH}
+      DB_PASSWORD_MONOGRAFIAS: ${DB_PASSWORD_MONOGRAFIAS}
+      DB_PASSWORD_BANCAS: ${DB_PASSWORD_BANCAS}
+      DB_PASSWORD_REPOSITORIO: ${DB_PASSWORD_REPOSITORIO}
+      DB_PASSWORD_NOTIFICACOES: ${DB_PASSWORD_NOTIFICACOES}
+      DB_PASSWORD_RELATORIOS: ${DB_PASSWORD_RELATORIOS}
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=256MB"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+      - ./scripts/init-roles.sh:/docker-entrypoint-initdb.d/02-init-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [interna]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [interna]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes: [rabbit_data:/var/lib/rabbitmq]
+    ports: ["15672:15672"]  # painel de gerenciamento
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    networks: [interna]
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports: ["8025:8025"]  # UI de e-mails
+    networks: [interna]
+
+  # ---------------------------------------------------------------- auth-service
+  auth-service:
+    <<: *django
+    build: { context: ., dockerfile: services/auth/Dockerfile }
+    image: tcc/auth:latest
+    environment:
+      DATABASE_URL: postgres://auth_user:${DB_PASSWORD_AUTH}@postgres:5432/auth_db
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private.pem
+    secrets:
+      - { source: jwt_public, target: jwt_public.pem }
+      - { source: jwt_private, target: jwt_private.pem }
+  auth-outbox:
+    <<: *worker
+    image: tcc/auth:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://auth_user:${DB_PASSWORD_AUTH}@postgres:5432/auth_db" }
+    command: ["python", "manage.py", "publish_outbox"]
+    depends_on: { auth-service: { condition: service_healthy } }
+  auth-worker:
+    <<: *worker
+    image: tcc/auth:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://auth_user:${DB_PASSWORD_AUTH}@postgres:5432/auth_db" }
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { auth-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- monografias-service
+  monografias-service:
+    <<: *django
+    build: { context: ., dockerfile: services/monografias/Dockerfile }
+    image: tcc/monografias:latest
+    environment:
+      DATABASE_URL: postgres://monografias_user:${DB_PASSWORD_MONOGRAFIAS}@postgres:5432/monografias_db
+      MEDIA_ROOT: /app/media
+    volumes: [media_monografias:/app/media]
+  monografias-outbox:
+    <<: *worker
+    image: tcc/monografias:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://monografias_user:${DB_PASSWORD_MONOGRAFIAS}@postgres:5432/monografias_db" }
+    command: ["python", "manage.py", "publish_outbox"]
+    depends_on: { monografias-service: { condition: service_healthy } }
+  monografias-worker:
+    <<: *worker
+    image: tcc/monografias:latest
+    environment: { <<: *worker_env, MEDIA_ROOT: /app/media, DATABASE_URL: "postgres://monografias_user:${DB_PASSWORD_MONOGRAFIAS}@postgres:5432/monografias_db" }
+    volumes: [media_monografias:/app/media]
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { monografias-service: { condition: service_healthy } }
+  monografias-cron:  # verificação diária de integridade (SHA-256)
+    <<: *worker
+    image: tcc/monografias:latest
+    environment: { <<: *worker_env, MEDIA_ROOT: /app/media, DATABASE_URL: "postgres://monografias_user:${DB_PASSWORD_MONOGRAFIAS}@postgres:5432/monografias_db" }
+    volumes: [media_monografias:/app/media]
+    entrypoint: ["sh", "-c", "while true; do python manage.py verificar_integridade_todas; sleep 86400; done"]
+    depends_on: { monografias-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- bancas-service
+  bancas-service:
+    <<: *django
+    build: { context: ., dockerfile: services/bancas/Dockerfile }
+    image: tcc/bancas:latest
+    environment:
+      DATABASE_URL: postgres://bancas_user:${DB_PASSWORD_BANCAS}@postgres:5432/bancas_db
+  bancas-outbox:
+    <<: *worker
+    image: tcc/bancas:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://bancas_user:${DB_PASSWORD_BANCAS}@postgres:5432/bancas_db" }
+    command: ["python", "manage.py", "publish_outbox"]
+    depends_on: { bancas-service: { condition: service_healthy } }
+  bancas-worker:
+    <<: *worker
+    image: tcc/bancas:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://bancas_user:${DB_PASSWORD_BANCAS}@postgres:5432/bancas_db" }
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { bancas-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- repositorio-service
+  repositorio-service:
+    <<: *django
+    build: { context: ., dockerfile: services/repositorio/Dockerfile }
+    image: tcc/repositorio:latest
+    environment:
+      DATABASE_URL: postgres://repositorio_user:${DB_PASSWORD_REPOSITORIO}@postgres:5432/repositorio_db
+      MEDIA_ROOT: /app/media
+      BUSCA_CACHE_ATIVO: ${BUSCA_CACHE_ATIVO:-1}  # 0 = cenário "sem cache" do teste de carga
+    volumes: [media_repositorio:/app/media]
+  repositorio-outbox:
+    <<: *worker
+    image: tcc/repositorio:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://repositorio_user:${DB_PASSWORD_REPOSITORIO}@postgres:5432/repositorio_db" }
+    command: ["python", "manage.py", "publish_outbox"]
+    depends_on: { repositorio-service: { condition: service_healthy } }
+  repositorio-worker:
+    <<: *worker
+    image: tcc/repositorio:latest
+    environment: { <<: *worker_env, MEDIA_ROOT: /app/media, DATABASE_URL: "postgres://repositorio_user:${DB_PASSWORD_REPOSITORIO}@postgres:5432/repositorio_db" }
+    volumes: [media_repositorio:/app/media]
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { repositorio-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- notificacoes-service
+  notificacoes-service:
+    <<: *django
+    build: { context: ., dockerfile: services/notificacoes/Dockerfile }
+    image: tcc/notificacoes:latest
+    environment:
+      DATABASE_URL: postgres://notificacoes_user:${DB_PASSWORD_NOTIFICACOES}@postgres:5432/notificacoes_db
+  notificacoes-worker:
+    <<: *worker
+    image: tcc/notificacoes:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://notificacoes_user:${DB_PASSWORD_NOTIFICACOES}@postgres:5432/notificacoes_db" }
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { notificacoes-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- relatorios-service
+  relatorios-service:
+    <<: *django
+    build: { context: ., dockerfile: services/relatorios/Dockerfile }
+    image: tcc/relatorios:latest
+    environment:
+      DATABASE_URL: postgres://relatorios_user:${DB_PASSWORD_RELATORIOS}@postgres:5432/relatorios_db
+  relatorios-worker:
+    <<: *worker
+    image: tcc/relatorios:latest
+    environment: { <<: *worker_env, DATABASE_URL: "postgres://relatorios_user:${DB_PASSWORD_RELATORIOS}@postgres:5432/relatorios_db" }
+    command: ["python", "manage.py", "run_consumer"]
+    depends_on: { relatorios-service: { condition: service_healthy } }
+
+  # ---------------------------------------------------------------- borda
+  frontend:
+    build: { context: ./frontend }
+    image: tcc/frontend:latest
+    restart: unless-stopped
+    networks: [interna]
+
+  gateway:
+    build: { context: ./gateway }
+    image: tcc/gateway:latest
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      GATEWAY_RATE_REPOSITORIO: ${GATEWAY_RATE_REPOSITORIO:-200r/s}
+      GATEWAY_BURST_REPOSITORIO: ${GATEWAY_BURST_REPOSITORIO:-400}
+      GATEWAY_RATE_LOGIN: ${GATEWAY_RATE_LOGIN:-30r/m}
+      GATEWAY_BURST_LOGIN: ${GATEWAY_BURST_LOGIN:-40}
+    networks: [interna]
+    depends_on:
+      auth-service: { condition: service_healthy }
+      monografias-service: { condition: service_healthy }
+      bancas-service: { condition: service_healthy }
+      repositorio-service: { condition: service_healthy }
+      notificacoes-service: { condition: service_healthy }
+      relatorios-service: { condition: service_healthy }
+      frontend: { condition: service_started }
+
+secrets:
+  jwt_private:
+    file: ./secrets/jwt_private.pem
+  jwt_public:
+    file: ./secrets/jwt_public.pem
+
+volumes:
+  pg_data:
+  rabbit_data:
+  redis_data:
+  media_monografias:
+  media_repositorio:
+
+networks:
+  interna:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

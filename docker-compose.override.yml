@@ -1,0 +1,21 @@
+# Desenvolvimento: portas dos serviços e da infraestrutura expostas no host.
+# (aplicado automaticamente por `docker compose up`; em produção use -f docker-compose.yml)
+services:
+  postgres:
+    ports: ["5432:5432"]
+  redis:
+    ports: ["6379:6379"]
+  rabbitmq:
+    ports: ["5672:5672"]  # 15672 já exposto no compose base
+  auth-service:
+    ports: ["8001:8001"]
+  monografias-service:
+    ports: ["8002:8002"]
+  bancas-service:
+    ports: ["8003:8003"]
+  repositorio-service:
+    ports: ["8004:8004"]
+  notificacoes-service:
+    ports: ["8005:8005"]
+  relatorios-service:
+    ports: ["8006:8006"]
