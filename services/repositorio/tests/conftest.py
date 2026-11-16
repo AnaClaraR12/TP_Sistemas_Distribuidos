@@ -1,3 +1,4 @@
+import hashlib
 import io
 import uuid
 
@@ -67,8 +68,8 @@ def dados_publicada(base: dict, sha: str, **kw):
 def processar(django_capture_on_commit_callbacks):
     """Processa um evento como o consumer real, executando os callbacks pós-commit."""
     from apps.indexacao.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
-    from tcc_common.testing import envelope
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler, envelope
 
     def _processar(tipo, data):
         env = envelope(tipo, data)
@@ -91,3 +92,21 @@ def mock_pdf():
             )
 
         yield _registrar
+
+
+CORPO = "Capitulo 1\nA arquitetura usa um balanceador quiescente para orquestrar replicas.\nConclusao final."
+
+
+@pytest.fixture
+def publicar(processar, mock_pdf):
+    def _publicar(paginas=None, **kw):
+        base = dados_mono(**{k: v for k, v in kw.items() if k in ("titulo", "orientador_id", "curso_id")})
+        conteudo = pdf_com_texto(paginas or [CORPO])
+        mock_pdf(base["id"], conteudo)
+        assert processar("monografia.submetida", base) == "processado"
+        sha = hashlib.sha256(conteudo).hexdigest()
+        extras = {k: v for k, v in kw.items() if k not in ("titulo", "orientador_id", "curso_id")}
+        assert processar("monografia.publicada", dados_publicada(base, sha, **extras)) == "processado"
+        return base["id"]
+
+    return _publicar

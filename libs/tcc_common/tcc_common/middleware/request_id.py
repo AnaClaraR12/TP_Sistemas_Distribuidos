@@ -1,7 +1,5 @@
 """Propaga o X-Request-ID (gerado pelo gateway) para logs, eventos e resposta."""
 
-from __future__ import annotations
-
 import re
 import uuid
 

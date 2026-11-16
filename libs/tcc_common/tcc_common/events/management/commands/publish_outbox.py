@@ -3,12 +3,11 @@
 Usa ``SELECT ... FOR UPDATE SKIP LOCKED`` para permitir várias réplicas do publisher.
 """
 
-from __future__ import annotations
-
 import logging
 import signal
 import time
 
+import pika.exceptions
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections, transaction
 from django.utils import timezone
@@ -45,7 +44,7 @@ def publicar_lote(publisher, tamanho: int = 100) -> int:
         for evento in pendentes:
             try:
                 publisher.publicar(evento.payload)
-            except Exception as exc:  # noqa: BLE001
+            except (pika.exceptions.AMQPError, OSError) as exc:
                 evento.tentativas += 1
                 evento.ultimo_erro = repr(exc)[:2000]
                 evento.save(update_fields=["tentativas", "ultimo_erro"])
@@ -76,7 +75,7 @@ class Command(BaseCommand):
             close_old_connections()
             try:
                 n = publicar_lote(publisher)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - o publicador é um laço que não pode morrer
                 logger.error("publish_outbox_erro", extra={"erro": repr(exc)})
                 publisher.fechar()
                 n = 0

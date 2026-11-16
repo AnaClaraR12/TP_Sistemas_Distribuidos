@@ -1,7 +1,5 @@
 """Widgets e menus do dashboard permitidos por papel (consumido pelo frontend)."""
 
-from __future__ import annotations
-
 _MENUS = {
     "repositorio": {"rota": "/repositorio", "titulo": "Repositório público"},
     "minhas_monografias": {"rota": "/monografias", "titulo": "Minhas monografias"},

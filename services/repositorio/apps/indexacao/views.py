@@ -1,11 +1,10 @@
 """API PÚBLICA (sem autenticação, somente leitura) do repositório de monografias."""
 
-from __future__ import annotations
-
 import hashlib
 import uuid
 from pathlib import Path
 
+import redis
 from django.conf import settings
 from django.contrib.postgres.search import SearchHeadline, SearchQuery, SearchRank
 from django.db.models import Count, F, Q
@@ -150,8 +149,8 @@ class MonografiaPublicaViewSet(_Publico, viewsets.ReadOnlyModelViewSet):
         dados = self.get_serializer(doc).data
         try:
             dados["downloads"] = int(get_redis().get(f"downloads:{doc.monografia_id}") or 0)
-        except Exception:  # noqa: BLE001
-            dados["downloads"] = None
+        except redis.RedisError:
+            dados["downloads"] = None  # contador é só informativo
         dados["download_url"] = f"/api/repositorio/monografias/{doc.monografia_id}/download/"
         return Response(dados)
 
@@ -162,6 +161,8 @@ class MonografiaPublicaViewSet(_Publico, viewsets.ReadOnlyModelViewSet):
         caminho = Path(doc.arquivo_local or "")
         if not caminho.is_file():
             raise exceptions.NotFound("Arquivo indisponível.")
+        # TODO: sem Redis o download dá 500 (cache da verificação de hash e contador ficam aqui).
+        # A busca e o detalhe já seguem sem Redis; aqui daria para verificar o hash direto.
         r = get_redis()
         chave_ok = f"integridade_publica:{doc.monografia_id}"
         if not r.get(chave_ok):  # verificação de hash, cacheada por 1 h

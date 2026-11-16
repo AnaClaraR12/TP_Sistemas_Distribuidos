@@ -1,7 +1,5 @@
 """CRUD de Curso, Professor e Aluno (escrita: coordenador/admin)."""
 
-from __future__ import annotations
-
 from django.db import transaction
 from django.db.models import ProtectedError
 from rest_framework import viewsets

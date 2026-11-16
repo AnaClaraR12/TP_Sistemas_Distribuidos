@@ -1,6 +1,4 @@
-"""Diretório acadêmico (P1): Curso, Professor e Aluno — donos no auth-service."""
-
-from __future__ import annotations
+"""Curso, Professor e Aluno moram no auth-service; os outros serviços recebem cópias pelos eventos cadastro.*."""
 
 import uuid
 

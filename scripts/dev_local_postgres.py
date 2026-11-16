@@ -11,8 +11,6 @@ Observação: o build embutido não traz as extensões contrib (unaccent, pg_trg
 migrações tratam isso (extensões são opcionais e a busca normaliza acentos em Python).
 """
 
-from __future__ import annotations
-
 import os
 import sys
 import tempfile

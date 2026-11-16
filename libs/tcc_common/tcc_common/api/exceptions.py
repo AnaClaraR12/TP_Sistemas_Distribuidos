@@ -1,7 +1,5 @@
 """Erros de negócio e exception handler padrão: {"codigo", "mensagem", "detalhes"}."""
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

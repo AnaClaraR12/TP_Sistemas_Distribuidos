@@ -1,7 +1,3 @@
-"""Casos de uso do monografias-service (upload, submissão, integridade, documentos)."""
-
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 
@@ -40,11 +36,12 @@ def _erro_lock() -> ErroNegocio:
     )
 
 
-def processar_upload(monografia: Monografia, arquivo: UploadedFile, usuario, request=None) -> ResultadoUpload:
-    """Upload do PDF principal — validações na ordem da Fase 2, item 4.
+def _erro_duplicado() -> ErroNegocio:
+    return ErroNegocio("Este arquivo já foi submetido.", codigo="arquivo_duplicado", status_code=409)
 
-    (1) autenticação/dono/rascunho são verificados pela view antes desta função.
-    """
+
+def processar_upload(monografia: Monografia, arquivo: UploadedFile, usuario, request=None) -> ResultadoUpload:
+    """Upload do PDF principal. Quem chama (a view) já conferiu que o usuário é o autor."""
     if monografia.status != Status.RASCUNHO:
         raise TransicaoInvalida("Upload permitido apenas em rascunho.", codigo="upload_nao_permitido")
     if monografia.aprovacao_orientador == AprovacaoOrientador.APROVADA:
@@ -73,7 +70,7 @@ def processar_upload(monografia: Monografia, arquivo: UploadedFile, usuario, req
         if pdf.sha256 == monografia.arquivo_sha256:
             return ResultadoUpload(monografia, idempotente=True)
         if Monografia.objects.filter(arquivo_sha256=pdf.sha256).exclude(pk=monografia.pk).exists():
-            raise ErroNegocio("Este arquivo já foi submetido.", codigo="arquivo_duplicado", status_code=409)
+            raise _erro_duplicado()
         # (8) grava em media/monografias/<uuid>/<sha256>.pdf
         antigo = monografia.arquivo.name if monografia.arquivo else None
         nome = arquivos.salvar(arquivo, f"monografias/{monografia.id}/{pdf.sha256}.pdf")
@@ -96,7 +93,7 @@ def processar_upload(monografia: Monografia, arquivo: UploadedFile, usuario, req
                 )
         except IntegrityError as exc:  # corrida na deduplicação
             default_storage.delete(nome)
-            raise ErroNegocio("Este arquivo já foi submetido.", codigo="arquivo_duplicado", status_code=409) from exc
+            raise _erro_duplicado() from exc
         if antigo and antigo != nome:
             default_storage.delete(antigo)
         # (9) o status continua rascunho
@@ -117,6 +114,7 @@ def submeter(monografia: Monografia, usuario, request=None) -> Monografia:
             monografia.submeter()
             registrar_auditoria("submissao", "monografia", monografia.id, request=request, usuario=usuario)
     except Exception:
+        # deu errado: solta a trava já. Se deu certo, ela só sai quando a extração terminar.
         liberar_lock(chave, valor)
         raise
     return monografia
@@ -163,8 +161,7 @@ def verificar_integridade(monografia: Monografia, usuario=None, request=None) ->
     }
 
 
-# --- documentos complementares --------------------------------------------------------
-
+# Documentos complementares
 #: quem pode enviar cada tipo (além do admin)
 QUEM_ENVIA = {
     DocumentoComplementar.Tipo.TERMO: {"aluno"},
@@ -193,7 +190,7 @@ def enviar_documento(
         tipo == DocumentoComplementar.Tipo.VERSAO_CORRIGIDA
         and Monografia.objects.filter(arquivo_sha256=pdf.sha256).exclude(pk=monografia.pk).exists()
     ):
-        raise ErroNegocio("Este arquivo já foi submetido.", codigo="arquivo_duplicado", status_code=409)
+        raise _erro_duplicado()
     with transaction.atomic():
         doc = DocumentoComplementar(
             monografia=monografia,

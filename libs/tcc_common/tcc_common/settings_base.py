@@ -6,8 +6,6 @@ Uso em ``config/settings/base.py`` de cada serviço::
     globals().update(construir(servico="monografias", apps=["apps.monografias"]))
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +14,7 @@ import environ
 env = environ.Env()
 
 
-def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta: int = 8000) -> dict[str, Any]:
+def construir(servico: str, apps: list[str], base_dir: Path | None = None) -> dict[str, Any]:
     nome = f"{servico}-service"
     debug = env.bool("DEBUG", default=False)
     secret = env("DJANGO_SECRET_KEY", default="")
@@ -52,7 +50,6 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
         "BASE_DIR": base_dir,
         "SERVICO_NOME": nome,
         "SERVICO_CURTO": servico,
-        "SERVICO_PORTA": porta,
         "SECRET_KEY": secret,
         "DEBUG": debug,
         "ALLOWED_HOSTS": env.list(
@@ -113,7 +110,7 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
         "MEDIA_ROOT": env("MEDIA_ROOT", default=str((base_dir or Path(".")) / "media")),
         "MEDIA_URL": "/media/",
         "APPEND_SLASH": True,
-        # --- DRF / OpenAPI ---
+        # DRF / OpenAPI
         "REST_FRAMEWORK": {
             "DEFAULT_AUTHENTICATION_CLASSES": ["tcc_common.auth.authentication.JWTAuthentication"],
             "DEFAULT_PERMISSION_CLASSES": ["tcc_common.auth.permissions.IsAutenticado"],
@@ -124,9 +121,7 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
             "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
             "DEFAULT_THROTTLE_RATES": {
                 "anon": env("THROTTLE_ANON", default="60/min"),
-                "user": env("THROTTLE_USER", default="1000/min"),
                 "login": env("THROTTLE_LOGIN", default="20/min"),
-                "externo": env("THROTTLE_EXTERNO", default="30/min"),
             },
             "DATETIME_FORMAT": "iso-8601",
             "UNAUTHENTICATED_USER": "django.contrib.auth.models.AnonymousUser",
@@ -141,7 +136,7 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
             "SWAGGER_UI_SETTINGS": {"persistAuthorization": True},
             "COMPONENT_SPLIT_REQUEST": True,
         },
-        # --- Infra compartilhada ---
+        # Infra compartilhada
         "REDIS_URL": redis_url,
         "RABBITMQ_URL": env("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672/%2F"),
         "READY_CHECK_RABBITMQ": env.bool("READY_CHECK_RABBITMQ", default=True),
@@ -160,7 +155,7 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
             "bancas": env("BANCAS_SERVICE_URL", default="http://bancas-service:8003"),
             "repositorio": env("REPOSITORIO_SERVICE_URL", default="http://repositorio-service:8004"),
         },
-        # --- Segurança ---
+        # Segurança
         "CORS_ALLOWED_ORIGINS": env.list("CORS_ALLOWED_ORIGINS", default=[]),
         "SECURE_CONTENT_TYPE_NOSNIFF": True,
         "X_FRAME_OPTIONS": "DENY",
@@ -173,7 +168,7 @@ def construir(servico: str, apps: list[str], base_dir: Path | None = None, porta
         "USE_X_FORWARDED_HOST": True,
         "DATA_UPLOAD_MAX_MEMORY_SIZE": 5 * 1024 * 1024,
         "FILE_UPLOAD_MAX_MEMORY_SIZE": 2_621_440,
-        # --- Logs JSON ---
+        # Logs JSON
         "LOGGING": {
             "version": 1,
             "disable_existing_loggers": False,

@@ -1,10 +1,8 @@
-"""Cache-aside da busca pública no Redis com proteção contra *stampede* (Anexo E).
+"""Cache-aside da busca pública no Redis com proteção contra *stampede*.
 
 Chave: ``busca:<versao>:<sha256(querystring normalizada)>`` (TTL 300 s).
 ``busca:versao`` é incrementado a cada publicação => invalida todo o cache de uma vez.
 """
-
-from __future__ import annotations
 
 import hashlib
 import json
@@ -13,6 +11,7 @@ import time
 from collections.abc import Callable
 from urllib.parse import urlencode
 
+import redis
 from django.conf import settings
 
 from tcc_common.cache.redis import adquirir_lock, get_redis, liberar_lock
@@ -37,7 +36,7 @@ def chave_busca(params) -> tuple[str, str]:
     h = hashlib.sha256(normalizar_querystring(params).encode()).hexdigest()
     try:
         versao = get_redis().get(CHAVE_VERSAO) or "0"
-    except Exception:  # noqa: BLE001
+    except redis.RedisError:
         versao = "0"
     return f"busca:{versao}:{h}", h
 
@@ -45,7 +44,7 @@ def chave_busca(params) -> tuple[str, str]:
 def invalidar_cache_busca() -> None:
     try:
         get_redis().incr(CHAVE_VERSAO)
-    except Exception as exc:  # noqa: BLE001
+    except redis.RedisError as exc:
         logger.warning("falha_invalidar_cache", extra={"erro": repr(exc)})
 
 
@@ -74,6 +73,6 @@ def obter_ou_calcular(params, calcular: Callable[[], dict], espera_max_s: float 
             bruto = r.get(chave)
             if bruto:
                 return json.loads(bruto), "HIT"
-    except Exception as exc:  # noqa: BLE001
+    except redis.RedisError as exc:
         logger.warning("cache_busca_indisponivel", extra={"erro": repr(exc)})
     return calcular(), "MISS"

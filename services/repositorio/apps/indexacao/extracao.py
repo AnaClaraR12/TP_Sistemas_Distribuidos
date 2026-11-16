@@ -1,7 +1,5 @@
 """Download do PDF (HTTP interno) e extração de texto com pdfplumber (fallback pypdf)."""
 
-from __future__ import annotations
-
 import hashlib
 import logging
 import os
@@ -80,6 +78,8 @@ def _com_pypdf(caminho: str) -> TextoExtraido:
 
 def extrair_texto(caminho: str) -> TextoExtraido:
     """PDF escaneado sem texto -> ``sem_texto=True`` (não é erro). Corrompido -> ``PdfCorrompido``."""
+    # PDF enviado por usuário pode quebrar os parsers com qualquer tipo de exceção
+    # (KeyError, struct.error, erros próprios do pdfminer...), por isso a captura é ampla.
     try:
         return _com_pdfplumber(caminho)
     except Exception as exc:  # noqa: BLE001

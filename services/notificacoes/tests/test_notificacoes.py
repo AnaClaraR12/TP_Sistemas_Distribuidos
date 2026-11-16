@@ -42,7 +42,8 @@ def _base(refs, **kw):
 
 def _processar(env):
     from apps.notificacoes.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     return processar_evento(env, encontrar_handler(HANDLERS, env["type"]))
 

@@ -1,5 +1,3 @@
-"""Consulta de auditoria (admin/coordenador) com filtros por usuário, ação e período."""
-
 import django_filters
 from rest_framework import serializers, viewsets
 

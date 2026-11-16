@@ -8,7 +8,9 @@ router = RouterBarraOpcional()
 router.register("api/bancas", views.BancaViewSet, basename="banca")
 router.register("api/avaliacoes", views.AvaliacaoViewSet, basename="avaliacao")
 
-avaliacao_aninhada = views.AvaliacaoViewSet.as_view({"get": "retrieve", "patch": "partial_update", "put": "update"})
+avaliacao_aninhada = views.AvaliacaoViewSet.as_view(
+    {"get": "retrieve", "patch": "partial_update", "put": "update", "delete": "destroy"}
+)
 
 urlpatterns = [
     *urls_base("bancas"),

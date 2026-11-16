@@ -1,7 +1,5 @@
 """Sinais: auditoria de login/logout/falha, contador de bloqueio e grupos por papel."""
 
-from __future__ import annotations
-
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in, user_logged_out, user_login_failed
 from django.db.models.signals import post_save

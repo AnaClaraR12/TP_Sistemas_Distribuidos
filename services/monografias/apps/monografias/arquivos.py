@@ -1,8 +1,6 @@
 """Validação e gravação de PDFs: formato (extensão + magic bytes + Content-Type),
 tamanho em streaming, SHA-256 em chunks e nome de arquivo controlado pelo servidor."""
 
-from __future__ import annotations
-
 import hashlib
 from dataclasses import dataclass
 
@@ -50,28 +48,27 @@ def validar_formato(arquivo: UploadedFile) -> None:
         )
 
 
+def _muito_grande() -> ErroNegocio:
+    return ErroNegocio(
+        f"Arquivo excede {settings.MAX_UPLOAD_MB} MB.",
+        codigo="arquivo_muito_grande",
+        status_code=413,
+        detalhes={"limite_mb": settings.MAX_UPLOAD_MB},
+    )
+
+
 def validar_tamanho_e_hash(arquivo: UploadedFile) -> tuple[str, int]:
     """Lê em chunks (sem carregar tudo na memória): calcula SHA-256 e aborta se exceder o limite."""
     limite = limite_bytes()
     if arquivo.size is not None and arquivo.size > limite:
-        raise ErroNegocio(
-            f"Arquivo excede {settings.MAX_UPLOAD_MB} MB.",
-            codigo="arquivo_muito_grande",
-            status_code=413,
-            detalhes={"limite_mb": settings.MAX_UPLOAD_MB},
-        )
+        raise _muito_grande()
     sha = hashlib.sha256()
     total = 0
     arquivo.seek(0)
     for bloco in arquivo.chunks(CHUNK):
         total += len(bloco)
-        if total > limite:
-            raise ErroNegocio(
-                f"Arquivo excede {settings.MAX_UPLOAD_MB} MB.",
-                codigo="arquivo_muito_grande",
-                status_code=413,
-                detalhes={"limite_mb": settings.MAX_UPLOAD_MB},
-            )
+        if total > limite:  # o tamanho declarado pode mentir: conta o que chegou de fato
+            raise _muito_grande()
         sha.update(bloco)
     arquivo.seek(0)
     if total == 0:

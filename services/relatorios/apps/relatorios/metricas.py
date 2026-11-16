@@ -1,13 +1,12 @@
 """Métricas do dashboard — agregações no banco (Count/Avg/ExtractYear), sem loops em Python."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
 from collections.abc import Callable
 from datetime import timedelta
 
+import redis
 from django.conf import settings
 from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.db.models.functions import Coalesce, ExtractYear
@@ -22,9 +21,6 @@ REPROVADAS = Count("monografia_id", filter=Q(resultado="reprovada"))
 PUBLICADAS = Count("monografia_id", filter=Q(status="publicada"))
 
 
-# --- escopo por papel -------------------------------------------------------------------
-
-
 def escopo_do_usuario(u) -> tuple[str, Q]:
     if u.papel == "admin":
         return "admin", Q()
@@ -36,22 +32,21 @@ def escopo_do_usuario(u) -> tuple[str, Q]:
     return f"aluno:{u.aluno_id}", Q(aluno_id=u.aluno_id)
 
 
-# --- cache ------------------------------------------------------------------------------
-
-
 def com_cache(nome: str, escopo: str, calcular: Callable[[], dict]) -> tuple[dict, str]:
     chave = f"relatorio:{nome}:{hashlib.sha256(escopo.encode()).hexdigest()[:16]}"
     try:
-        r = get_redis()
-        bruto = r.get(chave)
-        if bruto:
-            return json.loads(bruto), "HIT"
-        dados = calcular()
-        r.set(chave, json.dumps(dados, default=str), ex=settings.RELATORIO_CACHE_TTL_S)
-        return dados, "MISS"
-    except Exception as exc:  # noqa: BLE001
+        bruto = get_redis().get(chave)
+    except redis.RedisError as exc:
         logger.warning("cache_relatorio_indisponivel", extra={"erro": repr(exc)})
         return calcular(), "MISS"
+    if bruto:
+        return json.loads(bruto), "HIT"
+    dados = calcular()
+    try:
+        get_redis().set(chave, json.dumps(dados, default=str), ex=settings.RELATORIO_CACHE_TTL_S)
+    except redis.RedisError as exc:
+        logger.warning("cache_relatorio_indisponivel", extra={"erro": repr(exc)})
+    return dados, "MISS"
 
 
 def invalidar_cache() -> None:
@@ -60,11 +55,8 @@ def invalidar_cache() -> None:
         chaves = list(r.scan_iter("relatorio:*", count=500))
         if chaves:
             r.delete(*chaves)
-    except Exception as exc:  # noqa: BLE001
+    except redis.RedisError as exc:
         logger.warning("falha_invalidar_cache_relatorio", extra={"erro": repr(exc)})
-
-
-# --- métricas ------------------------------------------------------------------------------
 
 
 def _taxa(aprovadas: int, reprovadas: int) -> float | None:
@@ -76,22 +68,23 @@ def _dias(td: timedelta | None) -> float | None:
     return round(td.total_seconds() / 86400, 1) if td is not None else None
 
 
-def por_curso(qs) -> list[dict]:
+def _contagem_por(qs, entidade: str) -> list[dict]:
+    """Totais agrupados por curso ou por orientador (``entidade`` = "curso" | "orientador")."""
+    campo_id, campo_nome = f"{entidade}_id", f"{entidade}_nome"
     linhas = (
-        qs.values("curso_id", "curso_nome")
+        qs.values(campo_id, campo_nome)
         .annotate(total=Count("monografia_id"), publicadas=PUBLICADAS, aprovadas=APROVADAS, reprovadas=REPROVADAS)
-        .order_by("-total", "curso_nome")
+        .order_by("-total", campo_nome)
     )
-    return [{**row, "curso_id": str(row["curso_id"]) if row["curso_id"] else None} for row in linhas]
+    return [{**row, campo_id: str(row[campo_id]) if row[campo_id] else None} for row in linhas]
+
+
+def por_curso(qs) -> list[dict]:
+    return _contagem_por(qs, "curso")
 
 
 def por_orientador(qs) -> list[dict]:
-    linhas = (
-        qs.values("orientador_id", "orientador_nome")
-        .annotate(total=Count("monografia_id"), publicadas=PUBLICADAS, aprovadas=APROVADAS, reprovadas=REPROVADAS)
-        .order_by("-total", "orientador_nome")
-    )
-    return [{**row, "orientador_id": str(row["orientador_id"]) if row["orientador_id"] else None} for row in linhas]
+    return _contagem_por(qs, "orientador")
 
 
 def por_ano(qs) -> list[dict]:

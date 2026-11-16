@@ -1,8 +1,7 @@
 """Envio idempotente com retry/backoff."""
 
-from __future__ import annotations
-
 import logging
+import smtplib
 import time
 from dataclasses import dataclass
 
@@ -33,7 +32,7 @@ def _enviar_com_retry(notif: Notificacao, corpo_real: str) -> None:
             notif.enviada_em = timezone.now()
             notif.ultimo_erro = ""
             return
-        except Exception as exc:  # noqa: BLE001 - SMTP pode falhar de muitas formas
+        except (smtplib.SMTPException, OSError) as exc:
             notif.ultimo_erro = repr(exc)[:1000]
             logger.warning("falha_envio_email", extra={"tentativa": tentativa, "tipo": notif.tipo, "erro": repr(exc)})
             if tentativa < settings.NOTIFICACAO_TENTATIVAS:

@@ -8,8 +8,6 @@ Uso: python loadtest/rodar_local.py --usuarios 400 --duracao 60
 Saída: loadtest/resultados/<cenario>_stats.csv, cache_<cenario>.json e resumo_local.json
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json

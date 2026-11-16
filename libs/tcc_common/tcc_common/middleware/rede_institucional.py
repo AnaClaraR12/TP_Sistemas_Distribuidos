@@ -1,6 +1,4 @@
-"""Restringe a área administrativa à rede institucional (IP/VPN) — seção 4.4 / P11."""
-
-from __future__ import annotations
+"""Área administrativa só a partir da rede institucional (IP/VPN)."""
 
 import ipaddress
 import re
@@ -8,6 +6,9 @@ from functools import lru_cache
 
 from django.conf import settings
 from django.http import JsonResponse
+
+# Django Admin e as rotas /api/<servico>/admin/
+ROTAS_ADMINISTRATIVAS = re.compile(r"^/admin/|^/api/[^/]+/admin/")
 
 
 @lru_cache(maxsize=8)
@@ -46,11 +47,9 @@ class InstitutionalNetworkMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
-        padroes = getattr(settings, "REDE_INSTITUCIONAL_ROTAS", [r"^/admin/", r"^/api/[^/]+/admin/"])
-        self.padroes = [re.compile(p) for p in padroes]
 
     def __call__(self, request):
-        if any(p.match(request.path) for p in self.padroes):
+        if ROTAS_ADMINISTRATIVAS.match(request.path):
             ip = ip_do_cliente(request)
             if not _pertence(ip, settings.INSTITUTIONAL_CIDRS):
                 return JsonResponse(

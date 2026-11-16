@@ -1,7 +1,5 @@
 """Normalização de texto para busca insensível a acentos e caixa ("monografia" = "monografía")."""
 
-from __future__ import annotations
-
 import re
 import unicodedata
 

@@ -9,8 +9,6 @@ Contra o gateway (Docker):
 Balanceamento no cliente (réplicas locais sem Nginx): BACKENDS=http://127.0.0.1:9001,http://127.0.0.1:9002
 """
 
-from __future__ import annotations
-
 import json
 import os
 import random
@@ -79,7 +77,7 @@ def _carregar_ids(environment, **kw):
     try:
         r = requests.get(f"{base}/api/repositorio/monografias/?limit=50&ordenar=recentes", timeout=10)
         IDS.extend(m["id"] for m in r.json().get("results", []))
-    except Exception as exc:  # noqa: BLE001
+    except (requests.RequestException, ValueError, KeyError) as exc:
         print("aviso: não foi possível carregar IDs:", exc)
 
 

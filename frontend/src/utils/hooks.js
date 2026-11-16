@@ -10,7 +10,6 @@ export function useDebounce(valor, ms = 400) {
   return atrasado;
 }
 
-/** GET com estados de carregamento/erro e função de recarga. */
 export function useApi(url, { params, ativo = true } = {}) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState(null);

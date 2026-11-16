@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pytest-django>=4.9", "pytest-cov>=6", "factory_boy>=3.3", "fakeredis>=2.26", "responses>=0.25"]
+test = ["pytest>=8", "pytest-django>=4.9", "pytest-cov>=6", "fakeredis>=2.26"]
 
 [tool.setuptools.packages.find]
 include = ["tcc_common*"]

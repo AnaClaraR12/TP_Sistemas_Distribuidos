@@ -240,18 +240,31 @@ export function DetalheBanca() {
         <article className="cartao">
           <h2>{minhaAv ? "Minha avaliação" : "Lançar avaliação"}</h2>
           {aberta ? (
-            <FormAvaliacao
-              key={minhaAv?.id || "nova"}
-              inicial={minhaAv}
-              rotuloBotao={minhaAv ? "Salvar alterações" : "Lançar avaliação"}
-              onEnviar={async (dados) => {
-                if (minhaAv) await api.patch(`/api/bancas/${id}/avaliacoes/${minhaAv.id}/`, dados);
-                else await api.post(`/api/bancas/${id}/avaliacoes/`, dados);
-                setMsg("Avaliação registrada.");
-                await recarregar();
-                await recarregarAv();
-              }}
-            />
+            <>
+              <FormAvaliacao
+                key={minhaAv?.id || "nova"}
+                inicial={minhaAv}
+                rotuloBotao={minhaAv ? "Salvar alterações" : "Lançar avaliação"}
+                onEnviar={async (dados) => {
+                  if (minhaAv) await api.patch(`/api/bancas/${id}/avaliacoes/${minhaAv.id}/`, dados);
+                  else await api.post(`/api/bancas/${id}/avaliacoes/`, dados);
+                  setMsg("Avaliação registrada.");
+                  await recarregar();
+                  await recarregarAv();
+                }}
+              />
+              {minhaAv && (
+                <button
+                  className="perigo"
+                  onClick={() =>
+                    window.confirm("Excluir sua avaliação? Ela precisará ser lançada de novo para o resultado sair.") &&
+                    acao(() => api.delete(`/api/bancas/${id}/avaliacoes/${minhaAv.id}/`), "Avaliação excluída.")
+                  }
+                >
+                  Excluir minha avaliação
+                </button>
+              )}
+            </>
           ) : (
             <p>Nota {minhaAv.nota} — {RECOMENDACOES[minhaAv.recomendacao]} (resultado fechado; edição bloqueada)</p>
           )}
@@ -303,6 +316,17 @@ export function BancaExterna() {
   const { banca, membro, monografia, minha_avaliacao: av } = dados;
   const aberta = banca.status === "realizada" && !banca.resultado_fechado;
 
+  async function excluirAvaliacao() {
+    if (!window.confirm("Excluir sua avaliação?")) return;
+    try {
+      await cliente("delete", "/api/bancas/externo/avaliacao/");
+      setMsg("Avaliação excluída.");
+      await carregar();
+    } catch (e) {
+      setErro(mensagemDeErro(e));
+    }
+  }
+
   async function responder(resposta) {
     try {
       await cliente("post", "/api/bancas/externo/confirmar/", { resposta });
@@ -337,6 +361,7 @@ export function BancaExterna() {
         <>
           <h2>{av ? "Editar minha avaliação" : "Lançar avaliação"}</h2>
           <FormAvaliacao
+            key={av?.id || "nova"}
             inicial={av}
             rotuloBotao={av ? "Salvar alterações" : "Lançar avaliação"}
             onEnviar={async (d) => {
@@ -345,6 +370,11 @@ export function BancaExterna() {
               await carregar();
             }}
           />
+          {av && (
+            <button className="perigo" onClick={excluirAvaliacao}>
+              Excluir minha avaliação
+            </button>
+          )}
         </>
       )}
       {banca.resultado_fechado && <p>O resultado desta banca já foi fechado. Seu acesso será encerrado.</p>}

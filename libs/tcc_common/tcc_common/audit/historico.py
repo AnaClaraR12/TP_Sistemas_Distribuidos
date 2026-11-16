@@ -4,8 +4,6 @@ Nos serviços não existe tabela de usuários: guardamos ``history_user_id`` (UU
 usuário autenticado no momento da alteração (``usuario_atual``) — quem / o quê / quando.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from django.db import models
@@ -85,9 +83,7 @@ def diff_historico(objeto, ignorar: set[str] | None = None) -> list[dict[str, An
 class HistoricoMixin:
     """Adiciona ``GET /<recurso>/{id}/historico/`` a um ViewSet."""
 
-    historico_ignorar: set[str] = set()
-
     @action(detail=True, methods=["get"], url_path="historico")
     def historico(self, request, *args, **kwargs):
         objeto = self.get_object()
-        return Response({"id": str(objeto.pk), "historico": diff_historico(objeto, self.historico_ignorar)})
+        return Response({"id": str(objeto.pk), "historico": diff_historico(objeto)})

@@ -1,11 +1,9 @@
-"""Settings do bancas-service."""
-
 from pathlib import Path
 
 from tcc_common.settings_base import construir, env
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-globals().update(construir(servico="bancas", porta=8003, base_dir=BASE_DIR, apps=["apps.bancas"]))
+globals().update(construir(servico="bancas", base_dir=BASE_DIR, apps=["apps.bancas"]))
 
 BANCA_MIN_MEMBROS = env.int("BANCA_MIN_MEMBROS", default=3)
 BANCA_DURACAO_PADRAO_MIN = env.int("BANCA_DURACAO_PADRAO_MIN", default=120)

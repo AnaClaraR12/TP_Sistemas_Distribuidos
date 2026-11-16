@@ -1,7 +1,3 @@
-"""API de bancas (/api/bancas/), avaliações (/api/avaliacoes/) e acesso externo por token."""
-
-from __future__ import annotations
-
 import requests
 from django.conf import settings
 from django.core import signing
@@ -59,8 +55,8 @@ def _pode_ver(u, banca: Banca) -> bool:
 
 
 def _exigir_gestor(u, banca: Banca) -> None:
-    ref = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
-    if ref is None or not servicos.pode_gerir_banca(u, ref):
+    monografia = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
+    if monografia is None or not servicos.pode_gerir_banca(u, monografia):
         raise exceptions.PermissionDenied("Somente coordenador ou orientador gerenciam a banca.")
 
 
@@ -252,13 +248,22 @@ class BancaViewSet(HistoricoMixin, viewsets.ModelViewSet):
 
 
 class AvaliacaoViewSet(
-    HistoricoMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet
+    HistoricoMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
 ):
-    """/api/avaliacoes/ e /api/bancas/{banca}/avaliacoes/{id}/ — edição só pelo próprio avaliador."""
+    """/api/avaliacoes/ e /api/bancas/{banca}/avaliacoes/{id}/
+
+    Editar: só o próprio avaliador. Excluir: o próprio avaliador ou o admin.
+    As duas coisas só valem antes de o resultado da banca ser fechado.
+    """
 
     permission_classes = [IsAutenticado]
     serializer_class = AvaliacaoSerializer
-    http_method_names = ["get", "patch", "put", "head", "options"]
+    http_method_names = ["get", "patch", "put", "delete", "head", "options"]
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -286,9 +291,17 @@ class AvaliacaoViewSet(
             AvaliacaoSerializer(servicos.editar_avaliacao(av, s.validated_data, request.user, request)).data
         )
 
+    def destroy(self, request, *args, **kwargs):
+        av = self.get_object()
+        u = request.user
+        e_o_avaliador = bool(u.professor_id) and str(av.membro.professor_id) == u.professor_id
+        if not (e_o_avaliador or u.papel == "admin"):
+            raise exceptions.PermissionDenied("Somente o próprio avaliador ou o admin excluem a avaliação.")
+        servicos.excluir_avaliacao(av, u, request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
-# --- membro externo (sem login, header X-Banca-Token) --------------------------------------------
 
+# Membro externo (sem login, header X-Banca-Token)
 TOKEN_HEADER = OpenApiParameter("X-Banca-Token", str, OpenApiParameter.HEADER, required=True)
 
 
@@ -322,7 +335,7 @@ class ExternoMinhaBancaView(_ExternoBase):
     def get(self, request):
         m = self.membro(request)
         b = m.banca
-        ref = MonografiaRef.objects.filter(pk=b.monografia_id).first()
+        monografia = MonografiaRef.objects.filter(pk=b.monografia_id).first()
         assinatura = signing.TimestampSigner(salt="pdf-externo").sign(f"{m.id}:{b.monografia_id}")
         avaliacao = m.avaliacoes.first()
         return Response(
@@ -336,7 +349,7 @@ class ExternoMinhaBancaView(_ExternoBase):
                     "status": b.status,
                     "resultado_fechado": b.resultado_calculado_em is not None,
                 },
-                "monografia": {"titulo": ref.titulo if ref else ""},
+                "monografia": {"titulo": monografia.titulo if monografia else ""},
                 "membro": {"id": str(m.id), "nome": m.nome, "confirmacao": m.confirmacao, "funcao": m.funcao},
                 "minha_avaliacao": AvaliacaoSerializer(avaliacao).data if avaliacao else None,
                 "pdf_url": f"/api/bancas/externo/arquivo/?assinatura={assinatura}",
@@ -374,6 +387,15 @@ class ExternoAvaliacaoView(_ExternoBase):
         s = AvaliacaoEntradaSerializer(data=request.data, partial=True)
         s.is_valid(raise_exception=True)
         return Response(AvaliacaoSerializer(servicos.editar_avaliacao(av, s.validated_data, request=request)).data)
+
+    @extend_schema(parameters=[TOKEN_HEADER], request=None, responses={204: None})
+    def delete(self, request):
+        m = self.membro(request)
+        av = m.avaliacoes.first()
+        if av is None:
+            raise exceptions.NotFound("Avaliação ainda não registrada.")
+        servicos.excluir_avaliacao(av, request=request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ExternoArquivoView(APIView):

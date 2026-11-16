@@ -1,10 +1,8 @@
 """Testes de integração com RabbitMQ REAL (rodam no Docker: ``make test-integracao``).
 
-Critérios da Fase 3: durabilidade (consumer fora, 10 eventos, consumer volta),
+O que é verificado: durabilidade (consumer fora, 10 eventos, consumer volta),
 idempotência por event_id e mensagem veneno na DLQ após as tentativas.
 """
-
-from __future__ import annotations
 
 import json
 import os

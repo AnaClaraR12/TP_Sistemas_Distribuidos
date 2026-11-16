@@ -8,8 +8,6 @@ Topologia (idempotente):
   (backoff 10 s, 60 s, 5 min) que devolvem à fila original; e ``<fila>.dlq``.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
@@ -88,11 +86,11 @@ class Publisher:
             declarar_exchanges(self._canal)
         return self._canal
 
-    def publicar(self, envelope: dict, exchange: str = EXCHANGE, routing_key: str | None = None) -> None:
+    def publicar(self, envelope: dict) -> None:
         canal = self._garantir_canal()
         canal.basic_publish(
-            exchange=exchange,
-            routing_key=routing_key or envelope["type"],
+            exchange=EXCHANGE,
+            routing_key=envelope["type"],
             body=json.dumps(envelope, ensure_ascii=False).encode(),
             properties=pika.BasicProperties(
                 content_type="application/json",

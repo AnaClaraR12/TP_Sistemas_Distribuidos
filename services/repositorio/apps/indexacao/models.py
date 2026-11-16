@@ -7,7 +7,7 @@ from django.db import models
 
 
 class PublicosManager(models.Manager):
-    """Queryset base da API pública: SEMPRE filtra ``publico=True`` (Anexo H, item 6)."""
+    """Queryset base da API pública: SEMPRE filtra ``publico=True``."""
 
     def get_queryset(self):
         return super().get_queryset().filter(publico=True)

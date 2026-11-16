@@ -1,7 +1,5 @@
 """Consumer do auth-service: centraliza ``audit.registro`` e alertas de integridade."""
 
-from __future__ import annotations
-
 from apps.auditoria.servicos import gravar_registro
 
 

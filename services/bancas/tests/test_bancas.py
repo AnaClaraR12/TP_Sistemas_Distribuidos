@@ -16,9 +16,7 @@ from .conftest import PARECER, confirmar_todos, payload_banca, token_externo
 pytestmark = pytest.mark.django_db
 
 
-# --- etapa 1 -------------------------------------------------------------------------------
-
-
+# Etapa 1
 def test_criar_banca_inclui_orientador_e_gera_convites(cenario, criar_banca):
     from apps.bancas.models import MembroBanca
 
@@ -106,9 +104,7 @@ def test_minimo_3_membros(cenario):
     assert r.status_code == 400 and r.data["codigo"] == "membros_insuficientes"
 
 
-# --- etapa 2 -------------------------------------------------------------------------------
-
-
+# Etapa 2
 def test_agendar_sem_todas_confirmacoes_409(cenario, criar_banca):
     b = criar_banca()
     r = cenario.coord.client.post(f"/api/bancas/{b['id']}/agendar/")
@@ -231,9 +227,7 @@ def test_conflito_de_membro_externo_por_email(cenario, criar_banca, api):
     assert cenario.coord.client.post(f"/api/bancas/{b2['id']}/agendar/").status_code == 409
 
 
-# --- edição / cancelamento ------------------------------------------------------------------
-
-
+# Edição / cancelamento
 def test_editar_horario_exige_reconfirmacao(cenario, criar_banca, api):
     b = criar_banca()
     confirmar_todos(cenario, b, api)
@@ -265,9 +259,7 @@ def test_excluir_somente_em_organizacao_ou_cancelada(cenario, banca_realizada, c
     assert cenario.coord.client.delete(f"/api/bancas/{banca_realizada['id']}/").status_code == 409
 
 
-# --- token externo ------------------------------------------------------------------------------
-
-
+# Token externo
 def test_token_externo_acessa_somente_sua_banca(cenario, criar_banca, api):
     b = criar_banca()
     token = token_externo()
@@ -325,9 +317,7 @@ def test_pdf_por_url_assinada(cenario, criar_banca, api):
     assert api.get(url[:-3] + "xyz").status_code == 403
 
 
-# --- avaliações e resultado ---------------------------------------------------------------------
-
-
+# Avaliações e resultado
 def _avaliar(cenario, banca, api, notas_recs):
     """notas_recs: lista (nota, recomendação) para orientador, prof 1 e externo, nesta ordem."""
     clientes = [cenario.orientador.client, cenario.p1.client, None]
@@ -344,7 +334,8 @@ def _avaliar(cenario, banca, api, notas_recs):
 
 def _processar_eventos_avaliacao():
     from apps.bancas.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     for env in eventos_outbox("avaliacao.registrada"):
         processar_evento(env, encontrar_handler(HANDLERS, env["type"]))
@@ -469,7 +460,8 @@ def test_calculo_idempotente(cenario, banca_realizada, api):
     _processar_eventos_avaliacao()  # eventos repetidos
     env = envelope("avaliacao.registrada", {"banca_id": banca_realizada["id"], "avaliacao_id": "x", "membro_id": "y"})
     from apps.bancas.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     processar_evento(env, encontrar_handler(HANDLERS, env["type"]))
     assert len(eventos_outbox("banca.resultado_calculado")) == 1
@@ -503,6 +495,59 @@ def test_edicao_da_avaliacao_antes_e_depois_do_fechamento(cenario, banca_realiza
     )
 
 
+def test_exclusao_da_avaliacao_so_pelo_avaliador_ou_admin(cenario, banca_realizada, api):
+    from apps.bancas.models import Avaliacao
+
+    r_orient, r_p1 = _avaliar(cenario, banca_realizada, api, [(8, "aprovado_sem_ressalvas"), (7, "reprovado")])
+    url = f"/api/bancas/{banca_realizada['id']}/avaliacoes/{r_orient.data['id']}/"
+    assert cenario.p1.client.delete(url).status_code in (403, 404)  # outro membro
+    assert cenario.coord.client.delete(url).status_code == 403  # coordenador enxerga, mas não exclui
+    assert cenario.aluno.client.delete(url).status_code in (403, 404)
+    assert cenario.orientador.client.delete(url).status_code == 204
+    assert not Avaliacao.objects.filter(pk=r_orient.data["id"]).exists()
+    assert cenario.admin.client.delete(f"/api/avaliacoes/{r_p1.data['id']}/").status_code == 204
+    acoes = [e["data"]["acao"] for e in eventos_outbox("audit.registro")]
+    assert acoes.count("avaliacao_excluida") == 2
+
+
+def test_exclusao_da_avaliacao_pelo_externo_com_token(cenario, banca_realizada, api):
+    from apps.bancas.models import Avaliacao
+
+    dados = {"nota": 8, "parecer": PARECER, "recomendacao": "aprovado_sem_ressalvas"}
+    r = api.post("/api/bancas/externo/avaliacao/", dados, format="json", HTTP_X_BANCA_TOKEN=token_externo())
+    assert r.status_code == 201
+    assert api.delete("/api/bancas/externo/avaliacao/", HTTP_X_BANCA_TOKEN=token_externo()).status_code == 204
+    assert not Avaliacao.objects.filter(membro__tipo="externo").exists()
+    assert api.delete("/api/bancas/externo/avaliacao/", HTTP_X_BANCA_TOKEN=token_externo()).status_code == 404
+
+
+def test_exclusao_bloqueada_depois_do_fechamento(cenario, banca_realizada, api):
+    r = _avaliar(cenario, banca_realizada, api, [(8, "aprovado_sem_ressalvas")] * 3)
+    _processar_eventos_avaliacao()
+    url = f"/api/bancas/{banca_realizada['id']}/avaliacoes/{r[0].data['id']}/"
+    r_del = cenario.orientador.client.delete(url)
+    assert r_del.status_code == 409 and r_del.data["codigo"] == "resultado_fechado"
+    assert cenario.admin.client.delete(f"/api/avaliacoes/{r[0].data['id']}/").status_code == 409
+
+
+def test_resultado_espera_a_avaliacao_excluida_ser_lancada_de_novo(cenario, banca_realizada, api):
+    from apps.bancas.models import Banca
+
+    r = _avaliar(cenario, banca_realizada, api, [(8, "aprovado_sem_ressalvas")] * 3)
+    assert cenario.orientador.client.delete(f"/api/avaliacoes/{r[0].data['id']}/").status_code == 204
+    _processar_eventos_avaliacao()
+    assert Banca.objects.get(pk=banca_realizada["id"]).resultado_calculado_em is None  # falta o orientador
+
+    novo = cenario.orientador.client.post(
+        f"/api/bancas/{banca_realizada['id']}/avaliacoes/",
+        {"nota": 9, "parecer": PARECER, "recomendacao": "aprovado_sem_ressalvas"},
+        format="json",
+    )
+    assert novo.status_code == 201
+    _processar_eventos_avaliacao()
+    assert Banca.objects.get(pk=banca_realizada["id"]).resultado_final == "aprovada"
+
+
 def test_historico_da_avaliacao(cenario, banca_realizada, api):
     r = _avaliar(cenario, banca_realizada, api, [(8, "aprovado_sem_ressalvas")])[0]
     cenario.orientador.client.patch(f"/api/avaliacoes/{r.data['id']}/", {"nota": "9.0"}, format="json")
@@ -523,7 +568,8 @@ def test_visibilidade(cenario, criar_banca):
 def test_consumer_read_model_monografia(cenario):
     from apps.bancas.eventos import HANDLERS
     from apps.bancas.models import MonografiaRef
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     mid = str(uuid.uuid4())
     base = {

@@ -1,6 +1,6 @@
 # Decisões de arquitetura (ADRs curtas) e premissas
 
-## Premissas do enunciado (seção 10 do roteiro)
+## Pontos que o enunciado deixa em aberto e como foram decididos
 
 | # | Premissa | Onde está |
 |---|---|---|

@@ -24,7 +24,7 @@ Erros sempre no formato `{"codigo": "...", "mensagem": "...", "detalhes": {...}}
 | GET | `/api/repositorio/cursos/` · `/api/repositorio/orientadores/` | listas públicas |
 | POST | `/api/auth/token/` · `/api/auth/token/refresh/` | login (JWT) e renovação |
 | GET | `/.well-known/jwks.json` | chave pública |
-| GET/POST | `/api/bancas/externo/minha-banca/` · `/confirmar/` · `/avaliacao/` | membro externo (header `X-Banca-Token`) |
+| GET/POST/PATCH/DELETE | `/api/bancas/externo/minha-banca/` · `/confirmar/` · `/avaliacao/` | membro externo (header `X-Banca-Token`); `DELETE /avaliacao/` exclui a própria avaliação antes do fechamento |
 | GET | `/health/`, `/ready/` (e `/api/<svc>/health/`) | healthchecks |
 
 ## Restritos (Bearer)
@@ -38,7 +38,8 @@ Erros sempre no formato `{"codigo": "...", "mensagem": "...", "detalhes": {...}}
   `GET /{id}/historico/` · `GET /{id}/arquivo/download/`.
 * **bancas** — CRUD `/api/bancas` · `POST /{id}/agendar/` · `POST /{id}/cancelar/` · `POST /{id}/marcar-realizada/` ·
   `POST/DELETE /{id}/membros/[{m}/]` · `POST /{id}/membros/{m}/confirmar/` · `GET/POST /{id}/avaliacoes/` ·
-  `PATCH /api/bancas/{id}/avaliacoes/{a}/` e `/api/avaliacoes/{a}/` · `GET /{id}/pdf/` · `GET /{id}/historico/`.
+  `PATCH/DELETE /api/bancas/{id}/avaliacoes/{a}/` e `/api/avaliacoes/{a}/` (editar: só o avaliador; excluir: o avaliador ou o admin;
+  os dois só antes de o resultado ser fechado) · `GET /{id}/pdf/` · `GET /{id}/historico/`.
 * **notificações** — `GET /api/notificacoes/minhas/` · `POST /api/notificacoes/{id}/lida/`.
 * **relatórios** — `GET /api/relatorios/{monografias-por-curso|monografias-por-orientador|monografias-por-ano-defesa|taxa-aprovacao|tempo-medio-submissao-defesa|resumo}/`.
 * **interno (serviço-a-serviço, `X-Service-Token`, não exposto no gateway)** — `GET /internal/monografias/{id}/` e `/arquivo/`.

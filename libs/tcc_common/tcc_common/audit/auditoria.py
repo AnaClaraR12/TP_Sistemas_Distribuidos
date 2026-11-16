@@ -4,8 +4,6 @@ Cada serviço publica ``audit.registro`` (via outbox); o auth-service consome e 
 em ``RegistroAuditoria``. No próprio auth-service, ``AUDITORIA_HANDLER_LOCAL`` grava direto.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from django.conf import settings

@@ -1,12 +1,10 @@
-"""Validação local de JWT RS256 (seção 4.4).
+"""Validação local de JWT RS256.
 
 A chave pública é obtida, nesta ordem: ``JWT_PUBLIC_KEY`` (PEM no env) →
 ``JWT_PUBLIC_KEY_PATH`` (arquivo/secret) → JWKS do auth-service (``JWKS_URL``),
 cacheado no Redis em ``jwks:cache`` por 1 h. Nenhuma chamada ao auth-service é feita
 por requisição.
 """
-
-from __future__ import annotations
 
 import json
 import logging
@@ -15,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import jwt
+import redis
 import requests
 from django.conf import settings
 from jwt.algorithms import RSAAlgorithm
@@ -65,7 +64,8 @@ def obter_chave_publica() -> str:
         return chave
     try:
         return _chave_publica_jwks()
-    except Exception as exc:  # noqa: BLE001
+    except (requests.RequestException, redis.RedisError, ValueError, KeyError, IndexError, jwt.PyJWTError) as exc:
+        # auth-service fora, Redis fora ou JWKS com formato inesperado: o token não pode ser validado
         logger.error("jwks_indisponivel", extra={"erro": str(exc)})
         raise TokenInvalido("Chave pública indisponível.") from exc
 
@@ -73,7 +73,7 @@ def obter_chave_publica() -> str:
 def token_revogado(jti: str) -> bool:
     try:
         return bool(get_redis().exists(PREFIXO_REVOGADO + jti))
-    except Exception:  # noqa: BLE001
+    except redis.RedisError:
         # Redis fora: por padrão falha FECHADA (trata como revogado). Configurável.
         logger.warning("redis_indisponivel_checagem_revogacao")
         return not getattr(settings, "JWT_REVOGACAO_FAIL_OPEN", False)

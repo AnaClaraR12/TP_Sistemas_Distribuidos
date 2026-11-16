@@ -1,7 +1,3 @@
-"""Consumers do repositorio-service: extração assíncrona, publicação e read models."""
-
-from __future__ import annotations
-
 import logging
 import os
 import shutil
@@ -21,24 +17,24 @@ from tcc_common.texto import normalizar
 logger = logging.getLogger(__name__)
 
 
-def _aplicar_metadados(doc: DocumentoIndexado, d: dict) -> None:
-    doc.titulo = d.get("titulo") or doc.titulo
+def _aplicar_metadados(doc: DocumentoIndexado, mono: dict) -> None:
+    doc.titulo = mono.get("titulo") or doc.titulo
     doc.titulo_norm = normalizar(doc.titulo)
-    if "resumo" in d:
-        doc.resumo = d.get("resumo") or ""
-    if "palavras_chave" in d:
-        doc.palavras_chave = list(d.get("palavras_chave") or [])
+    if "resumo" in mono:
+        doc.resumo = mono.get("resumo") or ""
+    if "palavras_chave" in mono:
+        doc.palavras_chave = list(mono.get("palavras_chave") or [])
         doc.palavras_chave_norm = [normalizar(p) for p in doc.palavras_chave]
-    if d.get("autor_nome"):
-        doc.autor_nome = d["autor_nome"]
-        doc.autor_norm = normalizar(d["autor_nome"])
-    doc.orientador_id = d.get("orientador_id") or doc.orientador_id
-    if d.get("orientador_nome"):
-        doc.orientador_nome = d["orientador_nome"]
-        doc.orientador_norm = normalizar(d["orientador_nome"])
-    doc.curso_id = d.get("curso_id") or doc.curso_id
-    if d.get("curso_nome"):
-        doc.curso_nome = d["curso_nome"]
+    if mono.get("autor_nome"):
+        doc.autor_nome = mono["autor_nome"]
+        doc.autor_norm = normalizar(mono["autor_nome"])
+    doc.orientador_id = mono.get("orientador_id") or doc.orientador_id
+    if mono.get("orientador_nome"):
+        doc.orientador_nome = mono["orientador_nome"]
+        doc.orientador_norm = normalizar(mono["orientador_nome"])
+    doc.curso_id = mono.get("curso_id") or doc.curso_id
+    if mono.get("curso_nome"):
+        doc.curso_nome = mono["curso_nome"]
 
 
 def _extrair_para(doc: DocumentoIndexado, caminho: str, sha: str) -> extracao.TextoExtraido:
@@ -51,40 +47,44 @@ def _extrair_para(doc: DocumentoIndexado, caminho: str, sha: str) -> extracao.Te
     return resultado
 
 
+def _avisar_falha_extracao(mono: dict, motivo: str) -> None:
+    registrar_evento(
+        "monografia.extracao_falhou",
+        {
+            "id": mono["id"],
+            "motivo": motivo[:500],
+            "orientador_id": mono.get("orientador_id"),
+            "aluno_id": mono.get("aluno_id"),
+            "titulo": mono.get("titulo"),
+        },
+    )
+
+
 def on_submetida(envelope: dict) -> None:
     """monografia.submetida -> baixa o PDF, extrai o texto e indexa (publico=False)."""
-    d = envelope["data"]
-    caminho, sha = extracao.baixar_pdf(d["id"])  # DownloadFalhou => retry
+    mono = envelope["data"]
+    caminho, sha = extracao.baixar_pdf(mono["id"])  # DownloadFalhou => retry
     try:
-        doc, _ = DocumentoIndexado.objects.get_or_create(monografia_id=d["id"], defaults={"titulo": d["titulo"]})
-        _aplicar_metadados(doc, d)
+        doc, _ = DocumentoIndexado.objects.get_or_create(monografia_id=mono["id"], defaults={"titulo": mono["titulo"]})
+        _aplicar_metadados(doc, mono)
         doc.arquivo_sha256 = sha
         try:
             resultado = _extrair_para(doc, caminho, sha)
         except extracao.PdfCorrompido as exc:
             doc.save()
-            registrar_evento(
-                "monografia.extracao_falhou",
-                {
-                    "id": d["id"],
-                    "motivo": str(exc)[:500],
-                    "orientador_id": d.get("orientador_id"),
-                    "aluno_id": d.get("aluno_id"),
-                    "titulo": d.get("titulo"),
-                },
-            )
+            _avisar_falha_extracao(mono, str(exc))
             return
         doc.save()
         extracao.atualizar_vetor(doc)
         registrar_evento(
             "monografia.texto_extraido",
             {
-                "id": d["id"],
+                "id": mono["id"],
                 "paginas": resultado.paginas,
                 "sem_texto": resultado.sem_texto,
-                "orientador_id": d.get("orientador_id"),
-                "aluno_id": d.get("aluno_id"),
-                "titulo": d.get("titulo"),
+                "orientador_id": mono.get("orientador_id"),
+                "aluno_id": mono.get("aluno_id"),
+                "titulo": mono.get("titulo"),
             },
         )
     finally:
@@ -92,17 +92,7 @@ def on_submetida(envelope: dict) -> None:
 
 
 def _falha_definitiva_submetida(envelope: dict, exc: Exception) -> None:
-    d = envelope["data"]
-    registrar_evento(
-        "monografia.extracao_falhou",
-        {
-            "id": d["id"],
-            "motivo": f"Falha após retries: {exc!r}"[:500],
-            "orientador_id": d.get("orientador_id"),
-            "aluno_id": d.get("aluno_id"),
-            "titulo": d.get("titulo"),
-        },
-    )
+    _avisar_falha_extracao(envelope["data"], f"Falha após retries: {exc!r}")
 
 
 on_submetida.falha_definitiva = _falha_definitiva_submetida
@@ -116,32 +106,32 @@ def _pasta_publicados() -> Path:
 
 def on_publicada(envelope: dict) -> None:
     """monografia.publicada -> torna público, guarda cópia do PDF, reindexa e invalida o cache."""
-    d = envelope["data"]
-    doc, _ = DocumentoIndexado.objects.get_or_create(monografia_id=d["id"], defaults={"titulo": d["titulo"]})
-    _aplicar_metadados(doc, d)
-    caminho, sha = extracao.baixar_pdf(d["id"])
+    mono = envelope["data"]
+    doc, _ = DocumentoIndexado.objects.get_or_create(monografia_id=mono["id"], defaults={"titulo": mono["titulo"]})
+    _aplicar_metadados(doc, mono)
+    caminho, sha = extracao.baixar_pdf(mono["id"])
     try:
-        if d.get("sha256") and sha != d["sha256"]:
+        if mono.get("sha256") and sha != mono["sha256"]:
             raise extracao.DownloadFalhou("hash do PDF baixado difere do publicado")
         if doc.sha256_texto_extraido != sha:  # versão corrigida ou extração anterior falhou
             try:
                 _extrair_para(doc, caminho, sha)
             except extracao.PdfCorrompido:
-                logger.warning("pdf_publicado_sem_texto", extra={"monografia_id": d["id"]})
-        destino = _pasta_publicados() / f"{d['id']}.pdf"
+                logger.warning("pdf_publicado_sem_texto", extra={"monografia_id": mono["id"]})
+        destino = _pasta_publicados() / f"{mono['id']}.pdf"
         shutil.copyfile(caminho, destino)
     finally:
         os.unlink(caminho)
     doc.arquivo_sha256 = sha
     doc.arquivo_local = str(destino)
     doc.publico = True
-    doc.publicado_em = parse_datetime(d["publicada_em"]) if d.get("publicada_em") else timezone.now()
-    doc.ano_defesa = d.get("ano_defesa") or doc.publicado_em.year
+    doc.publicado_em = parse_datetime(mono["publicada_em"]) if mono.get("publicada_em") else timezone.now()
+    doc.ano_defesa = mono.get("ano_defesa") or doc.publicado_em.year
     doc.save()
     extracao.atualizar_vetor(doc)
     # só depois do commit: uma busca concorrente não pode gravar dado velho na versão nova do cache
     transaction.on_commit(invalidar_cache_busca)
-    registrar_evento("repositorio.indexado", {"monografia_id": d["id"]})
+    registrar_evento("repositorio.indexado", {"monografia_id": mono["id"]})
 
 
 def on_excluida(envelope: dict) -> None:

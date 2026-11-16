@@ -1,7 +1,3 @@
-"""Consumers do bancas-service (read models + cálculo assíncrono do resultado)."""
-
-from __future__ import annotations
-
 from apps.bancas.models import MonografiaRef, ProfessorRef
 from apps.bancas.servicos import calcular_resultado
 

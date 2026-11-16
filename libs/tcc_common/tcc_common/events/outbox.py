@@ -1,7 +1,5 @@
 """Envelope padrão e gravação no outbox (mesma transação do dado de negócio)."""
 
-from __future__ import annotations
-
 import json
 import uuid
 from datetime import UTC, datetime
@@ -27,7 +25,7 @@ def criar_envelope(
     correlation_id: str | None = None,
     event_id: str | None = None,
 ) -> dict[str, Any]:
-    """Monta o envelope padrão (seção Fase 3, item 2) e valida o schema do tipo."""
+    """Monta o envelope padrão e confere os campos obrigatórios do tipo."""
     data = _json_seguro(data)
     validar_dados(tipo, data)
     if actor_id is None:
@@ -45,7 +43,7 @@ def criar_envelope(
     }
 
 
-def registrar_evento(tipo: str, data: dict[str, Any], **kwargs) -> OutboxEvento:  # noqa: F821
+def registrar_evento(tipo: str, data: dict[str, Any], **kwargs):
     """Grava o evento na tabela ``outbox``. Deve ser chamado dentro da transação do dado."""
     from tcc_common.events.models import OutboxEvento
 

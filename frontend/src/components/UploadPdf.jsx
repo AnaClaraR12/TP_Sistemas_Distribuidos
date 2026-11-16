@@ -14,7 +14,7 @@ const MENSAGENS = {
  * Upload de PDF com barra de progresso e validação no cliente (formato e tamanho).
  * `url` recebe multipart com o campo "arquivo" (+ campos extras, ex.: tipo do documento).
  */
-export default function UploadPdf({ url, extras = {}, rotulo = "Arquivo PDF", onSucesso, maxMb = MAX_UPLOAD_MB }) {
+export default function UploadPdf({ url, extras = {}, rotulo = "Arquivo PDF", onSucesso }) {
   const [arquivo, setArquivo] = useState(null);
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState(null);
@@ -26,12 +26,12 @@ export default function UploadPdf({ url, extras = {}, rotulo = "Arquivo PDF", on
     setOk(null);
     setProgresso(0);
     setArquivo(f);
-    setErro(f ? validarPdf(f, maxMb) : null);
+    setErro(f ? validarPdf(f) : null);
   }
 
   async function enviar(e) {
     e.preventDefault();
-    const problema = validarPdf(arquivo, maxMb);
+    const problema = validarPdf(arquivo);
     if (problema) return setErro(problema);
     const form = new FormData();
     form.append("arquivo", arquivo);
@@ -56,7 +56,7 @@ export default function UploadPdf({ url, extras = {}, rotulo = "Arquivo PDF", on
   const idCampo = `pdf-${rotulo.replace(/\W+/g, "-")}`;
   return (
     <form className="upload" onSubmit={enviar} aria-label={`Envio de ${rotulo.toLowerCase()}`}>
-      <label htmlFor={idCampo}>{rotulo} (máx. {maxMb} MB)</label>
+      <label htmlFor={idCampo}>{rotulo} (máx. {MAX_UPLOAD_MB} MB)</label>
       <input id={idCampo} type="file" accept="application/pdf,.pdf" onChange={escolher} disabled={enviando} />
       {progresso > 0 && (
         <progress max="100" value={progresso} aria-label="Progresso do envio">

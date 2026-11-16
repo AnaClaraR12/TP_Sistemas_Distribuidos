@@ -1,6 +1,4 @@
-"""Cliente Redis compartilhado, rate limit e locks distribuídos (Anexo E)."""
-
-from __future__ import annotations
+"""Cliente Redis, rate limit por janela fixa e travas com SET NX."""
 
 import threading
 
@@ -12,11 +10,7 @@ _lock = threading.Lock()
 
 
 def get_redis() -> redis.Redis:
-    """Retorna um cliente Redis singleton (``REDIS_URL``).
-
-    ``fakeredis://`` usa um servidor em memória (testes); ``fakeredis-tcp://host:port``
-    não existe — para rodar localmente sem Redis use ``scripts/fake_redis_server.py``.
-    """
+    """Cliente único por processo. ``REDIS_URL=fakeredis://`` usa um Redis em memória (testes)."""
     global _cliente
     if _cliente is None:
         with _lock:

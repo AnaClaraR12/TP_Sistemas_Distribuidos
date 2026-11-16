@@ -1,4 +1,4 @@
-# Checklist de segurança (Fase 10)
+# Checklist de segurança
 
 | Item | Status | Evidência |
 |---|---|---|

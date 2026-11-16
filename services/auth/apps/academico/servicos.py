@@ -1,8 +1,7 @@
 """Regras do diretório acadêmico: criação de usuário vinculado, papéis e eventos cadastro.*."""
 
-from __future__ import annotations
-
 import logging
+import smtplib
 
 from allauth.account.forms import default_token_generator
 from allauth.account.utils import user_pk_to_url_str
@@ -45,7 +44,7 @@ def enviar_email_definir_senha(user) -> None:
             None,
             [user.email],
         )
-    except Exception as exc:  # noqa: BLE001 - e-mail não pode quebrar o cadastro
+    except (smtplib.SMTPException, OSError) as exc:  # e-mail não pode quebrar o cadastro
         logger.warning("falha_email_definir_senha", extra={"erro": repr(exc)})
 
 
@@ -59,9 +58,7 @@ def sincronizar_papel_coordenador(professor: Professor | None) -> None:
         professor.user.save(update_fields=["papel", "is_staff"])
 
 
-# --- eventos cadastro.* -------------------------------------------------------------
-
-
+# Eventos cadastro.*
 def publicar_curso(curso: Curso) -> None:
     registrar_evento(
         "cadastro.curso.upserted",

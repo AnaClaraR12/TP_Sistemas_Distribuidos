@@ -4,8 +4,6 @@ Sem dependências além de ``requests``. Inclui um gerador de PDF mínimo (com t
 extraível) e um leitor da API do MailHog (para obter os links de convite externo).
 """
 
-from __future__ import annotations
-
 import re
 import time
 import uuid
@@ -85,7 +83,7 @@ class Sessao:
         return self.req("DELETE", c, **kw)
 
     @classmethod
-    def login(cls, gateway: str, email: str, senha: str) -> Sessao:
+    def login(cls, gateway: str, email: str, senha: str) -> "Sessao":
         s = cls(gateway)
         r = s.post("/api/auth/token/", json={"email": email, "password": senha}, esperado=(200,))
         s.token = r.json()["access"]
@@ -117,7 +115,7 @@ def aguardar(condicao, timeout: float = 60, intervalo: float = 1.0, descricao: s
             ultimo = condicao()
             if ultimo:
                 return ultimo
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - enquanto o evento não chega, a condição pode falhar de vários jeitos
             ultimo = exc
         time.sleep(intervalo)
     raise TimeoutError(f"Tempo esgotado aguardando {descricao} (último: {ultimo!r})")
@@ -154,7 +152,7 @@ class MailHog:
         bruto = msg.get("Content", {}).get("Body", "")
         try:
             return quopri.decodestring(bruto.encode()).decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001
+        except ValueError:  # binascii.Error: corpo não estava em quoted-printable
             return bruto
 
     def token_convite(self, email: str) -> str | None:

@@ -1,7 +1,3 @@
-"""Monografia, DocumentoComplementar e read models (AlunoRef, ProfessorRef, CursoRef)."""
-
-from __future__ import annotations
-
 import uuid
 
 from django.conf import settings
@@ -31,9 +27,7 @@ class Base(models.Model):
         abstract = True
 
 
-# --- Read models (alimentados por cadastro.*) ---------------------------------------
-
-
+# Read models (alimentados por cadastro.*)
 class AlunoRef(models.Model):
     id = models.UUIDField(primary_key=True)
     nome = models.CharField(max_length=150)
@@ -57,9 +51,7 @@ class CursoRef(models.Model):
     coordenador_id = models.UUIDField(null=True)
 
 
-# --- Monografia ---------------------------------------------------------------------
-
-
+# Monografia
 class Monografia(Base):
     titulo = models.CharField(max_length=300)
     resumo = models.TextField(blank=True, default="")
@@ -110,7 +102,7 @@ class Monografia(Base):
     def __str__(self) -> str:
         return self.titulo
 
-    # --- proteção contra "monografia.status = ..." solto ---
+    # Proteção contra "monografia.status = ..." solto
     @classmethod
     def from_db(cls, db, field_names, values):
         inst = super().from_db(db, field_names, values)
@@ -135,7 +127,7 @@ class Monografia(Base):
         self.status = destino
         self._transicao_autorizada = True
 
-    # --- payloads de eventos ---
+    # Payloads de eventos
     def payload_base(self) -> dict:
         return {
             "id": self.id,
@@ -152,7 +144,7 @@ class Monografia(Base):
         data = self.defendida_em or self.publicada_em
         return timezone.localtime(data).year if data else None
 
-    # --- métodos de domínio ---
+    # Métodos de domínio
     def validar_para_submissao(self) -> None:
         faltando = []
         if not self.arquivo or not self.arquivo_sha256:
@@ -263,7 +255,7 @@ class Monografia(Base):
 
     @transaction.atomic
     def tentar_publicar(self) -> bool:
-        """Publica se e somente se todas as pré-condições (P7) forem atendidas."""
+        """Publica só se ``pendencias_publicacao()`` estiver vazia."""
         if self.pendencias_publicacao():
             return False
         self.publicar()

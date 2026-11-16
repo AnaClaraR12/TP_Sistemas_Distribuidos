@@ -2,10 +2,8 @@
 
     make up && make seed && make e2e
 
-Fluxo feliz completo (Fase 12) + fluxos negativos. Usa os usuários de demonstração.
+Fluxo feliz completo + fluxos negativos. Usa os usuários de demonstração.
 """
-
-from __future__ import annotations
 
 import os
 import sys

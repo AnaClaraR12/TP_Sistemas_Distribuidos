@@ -1,4 +1,4 @@
-"""Matriz de autorização (Anexo D) — endpoint restrito × papel -> status esperado."""
+"""Matriz de autorização: endpoint restrito × papel -> status esperado."""
 
 import pytest
 

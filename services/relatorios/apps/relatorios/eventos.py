@@ -1,7 +1,5 @@
 """Consumers idempotentes (upsert) que mantêm FatoMonografia."""
 
-from __future__ import annotations
-
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 

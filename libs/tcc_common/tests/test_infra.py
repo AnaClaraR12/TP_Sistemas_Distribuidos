@@ -63,11 +63,13 @@ def test_jwt_validado_localmente(ator):
 
 
 def test_redis_fora_falha_fechada(settings, monkeypatch, ator):
+    import redis
+
     from tcc_common.auth import jwt as modjwt
 
     class Quebrado:
         def exists(self, *_):
-            raise ConnectionError
+            raise redis.ConnectionError("redis fora")
 
     monkeypatch.setattr(modjwt, "get_redis", lambda: Quebrado())
     assert modjwt.token_revogado("x") is True

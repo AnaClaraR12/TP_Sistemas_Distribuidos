@@ -1,4 +1,4 @@
-"""Validações do upload na ordem da Fase 2 (formato, tamanho, SHA-256, dedup, lock, rate limit)."""
+"""Validações do upload (formato, tamanho, SHA-256, dedup, lock, rate limit)."""
 
 import hashlib
 import time

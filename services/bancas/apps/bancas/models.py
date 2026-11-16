@@ -1,7 +1,3 @@
-"""Banca, MembroBanca, Avaliacao e read models (MonografiaRef, ProfessorRef)."""
-
-from __future__ import annotations
-
 import uuid
 from datetime import timedelta
 
