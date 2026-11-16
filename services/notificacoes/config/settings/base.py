@@ -1,11 +1,9 @@
-"""Settings do notificacoes-service."""
-
 from pathlib import Path
 
 from tcc_common.settings_base import construir, env
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-globals().update(construir(servico="notificacoes", porta=8005, base_dir=BASE_DIR, apps=["apps.notificacoes"]))
+globals().update(construir(servico="notificacoes", base_dir=BASE_DIR, apps=["apps.notificacoes"]))
 
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="mailhog")

@@ -43,7 +43,7 @@ Nginx com `proxy_cache`), com o gerador de carga em outra máquina — roteiro e
 
 ## Comparação com a meta sugerida
 
-| Meta (Fase 11) | Medido |
+| Meta | Medido |
 |---|---|
 | erro < 1 % | ✅ 0 % em todos os cenários a 400 usuários e em C até ~620 usuários |
 | p95 < 500 ms com cache | ✅ 94 ms (1 réplica) e 25 ms (3 réplicas) a 400 usuários; 51 ms a ~620 usuários |

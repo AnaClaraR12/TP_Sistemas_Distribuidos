@@ -1,7 +1,5 @@
 """Bloqueio por tentativas: 5 falhas em 15 min -> bloqueio (Redis ``login_falhas:<email>``)."""
 
-from __future__ import annotations
-
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 

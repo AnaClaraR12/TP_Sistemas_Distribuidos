@@ -1,10 +1,8 @@
-"""Catálogo de eventos (Anexo C) — campos obrigatórios de ``data`` por tipo.
+"""Catálogo de eventos: campos obrigatórios de ``data`` por tipo.
 
 Validado na publicação (``registrar_evento``) e usado nos testes de contrato dos
 consumers, garantindo que produtor e consumidor concordam com o formato.
 """
-
-from __future__ import annotations
 
 SCHEMA_VERSION = 1
 

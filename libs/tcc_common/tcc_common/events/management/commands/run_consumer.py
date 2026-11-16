@@ -1,7 +1,5 @@
 """Inicia o consumer de eventos do serviço (``settings.EVENT_HANDLERS``)."""
 
-from __future__ import annotations
-
 import logging
 import time
 

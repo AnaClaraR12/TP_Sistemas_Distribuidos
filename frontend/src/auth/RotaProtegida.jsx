@@ -2,7 +2,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Carregando from "../components/Carregando";
 
-/** Redireciona para /login quando não autenticado; 403 visual quando o papel não permite. */
 export default function RotaProtegida({ papeis, children }) {
   const { usuario, carregando, papel } = useAuth();
   const local = useLocation();

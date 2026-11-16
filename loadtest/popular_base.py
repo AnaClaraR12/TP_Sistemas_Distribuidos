@@ -5,8 +5,6 @@ Uso (dentro de services/repositorio, com DJANGO_SETTINGS_MODULE e DATABASE_URL d
 No Docker:  docker compose exec repositorio-service python /app/popular_base.py 3000  (copie o arquivo)
 """
 
-from __future__ import annotations
-
 import hashlib
 import os
 import random

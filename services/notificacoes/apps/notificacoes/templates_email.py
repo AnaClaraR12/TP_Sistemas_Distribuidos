@@ -1,5 +1,3 @@
-"""Templates de e-mail (português) por tipo de notificação."""
-
 from django.template import Context, Template
 
 TEMPLATES: dict[str, tuple[str, str]] = {

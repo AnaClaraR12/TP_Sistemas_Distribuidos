@@ -62,7 +62,7 @@ verificação diária de integridade.
 
 | Módulo | Conteúdo |
 |---|---|
-| `auth` | validação local de JWT RS256 (chave por env/secret ou JWKS cacheado no Redis), `UsuarioToken`, permissões DRF (`IsAdmin`, `IsCoordenador`, `IsProfessor`, `IsAluno`, `IsDonoOuOrientador`, `ReadOnlyOrPublic`, `IsServicoInterno`) |
+| `auth` | validação local de JWT RS256 (chave por env/secret ou JWKS cacheado no Redis), `UsuarioToken`, permissões DRF (`IsAutenticado`, `IsAdmin`, `IsCoordenador`, `papeis(...)`, `IsServicoInterno`) |
 | `events` | envelope padrão + validação de schema (catálogo), modelos `OutboxEvento`/`EventoProcessado`, publisher com *confirms*, `BaseConsumer` (idempotência, ack pós-commit, retry 10 s/60 s/5 min, DLQ), comandos `publish_outbox`, `run_consumer`, `declarar_topologia` |
 | `middleware` | `RequestIdMiddleware` (X-Request-ID) e `InstitutionalNetworkMiddleware` (IP/VPN) |
 | `cache` | cliente Redis, rate limit (INCR+EXPIRE), locks `SET NX EX` |

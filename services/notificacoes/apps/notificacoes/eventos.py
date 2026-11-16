@@ -1,7 +1,5 @@
 """Consumers: evento -> destinatários certos -> e-mail (MailHog em dev) + alerta in-app."""
 
-from __future__ import annotations
-
 from django.conf import settings
 
 from apps.notificacoes.envio import Destinatario, notificar

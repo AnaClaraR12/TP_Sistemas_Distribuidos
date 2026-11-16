@@ -1,7 +1,3 @@
-"""API restrita de monografias (/api/monografias/) e endpoint interno de arquivo."""
-
-from __future__ import annotations
-
 from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
@@ -30,30 +26,31 @@ from tcc_common.audit.historico import HistoricoMixin
 from tcc_common.auth.permissions import IsAutenticado, IsServicoInterno
 
 
-def _s(v) -> str:
+def _id_texto(v) -> str:
+    # ids do model são UUID; os do token (JWT) chegam como texto
     return str(v) if v else ""
 
 
 def pode_ver(u, m: Monografia) -> bool:
     if u.papel == "admin":
         return True
-    if u.aluno_id and _s(m.aluno_id) == u.aluno_id:
+    if u.aluno_id and _id_texto(m.aluno_id) == u.aluno_id:
         return True
-    if u.professor_id and _s(m.orientador_id) == u.professor_id:
+    if u.professor_id and _id_texto(m.orientador_id) == u.professor_id:
         return True
-    return u.papel == "coordenador" and _s(m.curso_id) in set(u.curso_ids)
+    return u.papel == "coordenador" and _id_texto(m.curso_id) in set(u.curso_ids)
 
 
 def eh_dono(u, m: Monografia) -> bool:
-    return u.papel == "admin" or (bool(u.aluno_id) and _s(m.aluno_id) == u.aluno_id)
+    return u.papel == "admin" or (bool(u.aluno_id) and _id_texto(m.aluno_id) == u.aluno_id)
 
 
 def eh_orientador(u, m: Monografia) -> bool:
-    return u.papel == "admin" or (bool(u.professor_id) and _s(m.orientador_id) == u.professor_id)
+    return u.papel == "admin" or (bool(u.professor_id) and _id_texto(m.orientador_id) == u.professor_id)
 
 
 def eh_coordenador_do_curso(u, m: Monografia) -> bool:
-    return u.papel == "admin" or (u.papel == "coordenador" and _s(m.curso_id) in set(u.curso_ids))
+    return u.papel == "admin" or (u.papel == "coordenador" and _id_texto(m.curso_id) in set(u.curso_ids))
 
 
 def exigir(condicao: bool, mensagem: str = "Você não tem permissão para esta ação.") -> None:
@@ -92,16 +89,15 @@ class MonografiaViewSet(HistoricoMixin, viewsets.ModelViewSet):
             return MonografiaCriacaoAdminSerializer
         return super().get_serializer_class()
 
-    # --- CRUD ---
     def perform_create(self, serializer):
         u = self.request.user
         exigir(u.papel in ("aluno", "admin"), "Somente alunos criam monografias.")
         aluno_id = serializer.validated_data.get("aluno_id") if u.papel == "admin" else u.aluno_id
         if not aluno_id:
             raise ErroNegocio("Usuário sem vínculo de aluno.", codigo="sem_vinculo_aluno", status_code=400)
-        ref = AlunoRef.objects.filter(pk=aluno_id).first()
-        curso_id = ref.curso_id if ref else (u.curso_ids[0] if u.curso_ids else None)
-        orientador = serializer.validated_data.get("orientador_id") or (ref.orientador_id if ref else None)
+        aluno = AlunoRef.objects.filter(pk=aluno_id).first()
+        curso_id = aluno.curso_id if aluno else (u.curso_ids[0] if u.curso_ids else None)
+        orientador = serializer.validated_data.get("orientador_id") or (aluno.orientador_id if aluno else None)
         with transaction.atomic():
             m = serializer.save(aluno_id=aluno_id, curso_id=curso_id, orientador_id=orientador)
             registrar_auditoria("criacao", "monografia", m.id, request=self.request)
@@ -141,7 +137,6 @@ class MonografiaViewSet(HistoricoMixin, viewsets.ModelViewSet):
         for nome in arquivos:
             transaction.on_commit(lambda n=nome: default_storage.delete(n))
 
-    # --- ações de domínio ---
     @extend_schema(request={"multipart/form-data": ArquivoUploadSerializer}, responses=MonografiaSerializer)
     @action(detail=True, methods=["post"], url_path="arquivo", parser_classes=[MultiPartParser])
     def arquivo(self, request, pk=None):

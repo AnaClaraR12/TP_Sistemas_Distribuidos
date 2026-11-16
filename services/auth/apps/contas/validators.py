@@ -1,5 +1,3 @@
-"""Validador de complexidade de senha (maiúscula, minúscula, dígito e símbolo)."""
-
 import re
 
 from django.core.exceptions import ValidationError

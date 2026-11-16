@@ -6,8 +6,6 @@ inspecionando Redis, RabbitMQ e MailHog. Os testes são executados em ordem e co
     make up && make seed && pytest tests/e2e/test_requisitos.py -v
 """
 
-from __future__ import annotations
-
 import email.header
 import hashlib
 import os
@@ -48,9 +46,7 @@ pytestmark = pytest.mark.skipif(not _no_ar(), reason=f"gateway {GW} indisponíve
 E: dict = {}  # estado compartilhado entre os testes (executados em ordem)
 
 
-# ----------------------------------------------------------------------------- utilitários
-
-
+# Utilitários
 def compose(*args: str, check: bool = True) -> str:
     r = subprocess.run(["docker", "compose", *args], capture_output=True, text=True, timeout=300)
     if check and r.returncode != 0:

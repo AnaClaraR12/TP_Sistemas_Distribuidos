@@ -1,5 +1,7 @@
 """CRUD de cursos/professores/alunos, eventos cadastro.*, papéis e histórico."""
 
+import smtplib
+
 import pytest
 from django.core import mail
 
@@ -41,6 +43,25 @@ def test_criar_aluno_gera_user_e_evento(coord, django_capture_on_commit_callback
     assert ev["data"]["matricula"] == "2026010"
     assert ev["data"]["orientador_id"] == str(coord.prof.id)
     assert ev["schema_version"] == 1 and ev["producer"] == "auth-service"
+
+
+@pytest.mark.parametrize("erro", [ConnectionRefusedError("smtp fora"), smtplib.SMTPException("recusado")])
+def test_falha_no_email_de_senha_nao_desfaz_o_cadastro(coord, django_capture_on_commit_callbacks, monkeypatch, erro):
+    from apps.academico import servicos
+    from apps.contas.models import User
+
+    def quebra(*args, **kwargs):
+        raise erro
+
+    monkeypatch.setattr(servicos, "send_mail", quebra)
+    with django_capture_on_commit_callbacks(execute=True):
+        r = coord.post(
+            "/api/auth/alunos/",
+            {"nome": "Joana", "matricula": "2026011", "email": "joana@ufvjm.edu.br", "curso": str(coord.curso.id)},
+            format="json",
+        )
+    assert r.status_code == 201, r.data
+    assert User.objects.filter(email="joana@ufvjm.edu.br").exists()
 
 
 def test_email_duplicado_409(coord):
@@ -161,8 +182,8 @@ def test_auditoria_crud_e_consulta(coord, ator):
 def test_consumer_audit_registro_centraliza():
     from apps.auditoria.eventos import HANDLERS
     from apps.auditoria.models import RegistroAuditoria
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
-    from tcc_common.testing import envelope
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler, envelope
 
     env = envelope(
         "audit.registro",
@@ -187,8 +208,8 @@ def test_consumer_audit_registro_centraliza():
 def test_consumer_integridade_violada_critico():
     from apps.auditoria.eventos import HANDLERS
     from apps.auditoria.models import RegistroAuditoria
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
-    from tcc_common.testing import envelope
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler, envelope
 
     base = {
         "id": "11111111-1111-1111-1111-111111111111",

@@ -8,8 +8,6 @@ Uso (com o sistema de pé):  python scripts/seed_demo.py --gateway http://localh
 Requer acesso ao `docker compose` (para criar o admin e definir as senhas de demo).
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import random

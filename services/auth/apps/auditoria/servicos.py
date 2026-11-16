@@ -1,7 +1,3 @@
-"""Gravação de registros de auditoria (local e vindos de outros serviços)."""
-
-from __future__ import annotations
-
 import ipaddress
 import uuid
 from typing import Any

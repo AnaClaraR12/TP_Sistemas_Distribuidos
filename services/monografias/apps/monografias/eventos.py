@@ -1,7 +1,3 @@
-"""Consumers do monografias-service."""
-
-from __future__ import annotations
-
 import logging
 
 from django.utils.dateparse import parse_datetime

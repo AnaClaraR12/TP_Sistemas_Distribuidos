@@ -4,8 +4,6 @@ o pytest de cada serviço + da biblioteca tcc_common, com cobertura.
 Uso:  pip install pgserver tzdata && python scripts/run_tests_local.py [--sem-cobertura]
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 import sys

@@ -1,7 +1,8 @@
-"""Regras do bancas-service: agendamento em 2 etapas (P4), tokens externos (P10),
-conflito de horário com lock, avaliações e cálculo do resultado (P5)."""
+"""Regras de banca.
 
-from __future__ import annotations
+O agendamento tem duas etapas: a banca é criada e os convites saem (em_organizacao);
+só quando todos confirmam ela pode ser agendada, e aí se checa conflito de horário.
+"""
 
 import hashlib
 import logging
@@ -23,14 +24,12 @@ from tcc_common.events.outbox import registrar_evento
 logger = logging.getLogger(__name__)
 
 
-# --- monografia (read model + fallback HTTP interno) -----------------------------------
-
-
+# Monografia (read model + fallback HTTP interno)
 def obter_monografia(monografia_id) -> MonografiaRef:
     """Read model local; se ausente/defasado, consulta o monografias-service (HTTP interno)."""
-    ref = MonografiaRef.objects.filter(pk=monografia_id).first()
-    if ref and ref.apta_para_banca:
-        return ref
+    monografia = MonografiaRef.objects.filter(pk=monografia_id).first()
+    if monografia and monografia.apta_para_banca:
+        return monografia
     try:
         resp = requests.get(
             f"{settings.SERVICOS_URLS['monografias']}/internal/monografias/{monografia_id}/",
@@ -39,34 +38,33 @@ def obter_monografia(monografia_id) -> MonografiaRef:
         )
     except requests.RequestException as exc:
         logger.warning("fallback_monografias_indisponivel", extra={"erro": repr(exc)})
-        if ref:
-            return ref
+        if monografia:
+            return monografia
         raise ErroNegocio("Monografia não encontrada.", codigo="monografia_nao_encontrada", status_code=404) from exc
     if resp.status_code == 404:
         raise ErroNegocio("Monografia não encontrada.", codigo="monografia_nao_encontrada", status_code=404)
     resp.raise_for_status()
-    d = resp.json()
-    ref, _ = MonografiaRef.objects.update_or_create(
-        pk=d["id"],
+    dados = resp.json()
+    monografia, _ = MonografiaRef.objects.update_or_create(
+        pk=dados["id"],
         defaults={
-            k: d.get(k) for k in ("titulo", "status", "aprovacao_orientador", "aluno_id", "orientador_id", "curso_id")
+            k: dados.get(k)
+            for k in ("titulo", "status", "aprovacao_orientador", "aluno_id", "orientador_id", "curso_id")
         },
     )
-    return ref
+    return monografia
 
 
-def exigir_aprovacao_orientador(ref: MonografiaRef) -> None:
-    if not ref.apta_para_banca:
+def exigir_aprovacao_orientador(monografia: MonografiaRef) -> None:
+    if not monografia.apta_para_banca:
         raise ErroNegocio(
             "A banca só pode ser agendada após a aprovação do orientador.",
             codigo="orientador_nao_aprovou",
-            detalhes={"status": ref.status, "aprovacao_orientador": ref.aprovacao_orientador},
+            detalhes={"status": monografia.status, "aprovacao_orientador": monografia.aprovacao_orientador},
         )
 
 
-# --- tokens de membro externo -----------------------------------------------------------
-
-
+# Tokens de membro externo
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -94,13 +92,13 @@ def _expiracao_token(banca: Banca):
     return banca.data_hora_inicio + timedelta(days=settings.TOKEN_EXTERNO_DIAS_APOS_BANCA)
 
 
-def _evento_convite(banca: Banca, membro: MembroBanca, token: str | None, ref: MonografiaRef | None) -> None:
+def _evento_convite(banca: Banca, membro: MembroBanca, token: str | None, monografia: MonografiaRef | None) -> None:
     registrar_evento(
         "banca.convite_enviado",
         {
             "banca_id": banca.id,
             "monografia_id": banca.monografia_id,
-            "titulo": ref.titulo if ref else "",
+            "titulo": monografia.titulo if monografia else "",
             "data_hora": banca.data_hora_inicio,
             "local": banca.local,
             "link": banca.link,
@@ -117,7 +115,9 @@ def _evento_convite(banca: Banca, membro: MembroBanca, token: str | None, ref: M
     )
 
 
-def adicionar_membro(banca: Banca, dados: dict, ref: MonografiaRef | None, usuario=None, request=None) -> MembroBanca:
+def adicionar_membro(
+    banca: Banca, dados: dict, monografia: MonografiaRef | None, usuario=None, request=None
+) -> MembroBanca:
     tipo = dados["tipo"]
     if tipo == MembroBanca.Tipo.INTERNO:
         prof = ProfessorRef.objects.filter(pk=dados["professor_id"]).first()
@@ -156,7 +156,7 @@ def adicionar_membro(banca: Banca, dados: dict, ref: MonografiaRef | None, usuar
         raise ErroNegocio(
             "Membro já faz parte da banca.", codigo="membro_duplicado", detalhes={"email": membro.email}
         ) from exc
-    _evento_convite(banca, membro, token, ref)
+    _evento_convite(banca, membro, token, monografia)
     if token:
         registrar_auditoria(
             "token_externo_gerado",
@@ -169,9 +169,7 @@ def adicionar_membro(banca: Banca, dados: dict, ref: MonografiaRef | None, usuar
     return membro
 
 
-# --- etapa 1: criação ---------------------------------------------------------------------
-
-
+# Etapa 1: criação
 def _normalizar_local_link(dados: dict) -> tuple[str | None, str | None]:
     local = (dados.get("local") or "").strip() or None
     link = (dados.get("link") or "").strip() or None
@@ -184,26 +182,28 @@ def _normalizar_local_link(dados: dict) -> tuple[str | None, str | None]:
     return local, link
 
 
-def pode_gerir_banca(usuario, ref: MonografiaRef) -> bool:
+def pode_gerir_banca(usuario, monografia: MonografiaRef) -> bool:
     if usuario.papel in ("admin", "coordenador"):
         return True
-    return bool(usuario.professor_id) and str(ref.orientador_id) == str(usuario.professor_id)
+    return bool(usuario.professor_id) and str(monografia.orientador_id) == str(usuario.professor_id)
 
 
 @transaction.atomic
 def criar_banca(dados: dict, usuario, request=None) -> Banca:
-    ref = obter_monografia(dados["monografia_id"])
-    if not pode_gerir_banca(usuario, ref):
+    monografia = obter_monografia(dados["monografia_id"])
+    if not pode_gerir_banca(usuario, monografia):
         raise ErroNegocio(
             "Somente coordenador ou orientador da monografia agendam a banca.", codigo="acesso_negado", status_code=403
         )
-    exigir_aprovacao_orientador(ref)
-    if Banca.objects.filter(monografia_id=ref.id).exclude(status=Banca.Status.CANCELADA).exists():
+    exigir_aprovacao_orientador(monografia)
+    if Banca.objects.filter(monografia_id=monografia.id).exclude(status=Banca.Status.CANCELADA).exists():
         raise ErroNegocio("Já existe uma banca ativa para esta monografia.", codigo="banca_ja_existe")
     local, link = _normalizar_local_link(dados)
     membros = list(dados.get("membros") or [])
-    if ref.orientador_id and not any(str(m.get("professor_id")) == str(ref.orientador_id) for m in membros):
-        membros.insert(0, {"tipo": "interno", "professor_id": ref.orientador_id, "funcao": "orientador"})
+    if monografia.orientador_id and not any(
+        str(m.get("professor_id")) == str(monografia.orientador_id) for m in membros
+    ):
+        membros.insert(0, {"tipo": "interno", "professor_id": monografia.orientador_id, "funcao": "orientador"})
     if len(membros) < settings.BANCA_MIN_MEMBROS:
         raise ErroNegocio(
             f"A banca precisa de no mínimo {settings.BANCA_MIN_MEMBROS} membros (orientador + 2).",
@@ -211,7 +211,7 @@ def criar_banca(dados: dict, usuario, request=None) -> Banca:
             status_code=400,
         )
     banca = Banca.objects.create(
-        monografia_id=ref.id,
+        monografia_id=monografia.id,
         data_hora_inicio=dados["data_hora_inicio"],
         duracao_minutos=dados.get("duracao_minutos") or settings.BANCA_DURACAO_PADRAO_MIN,
         local=local,
@@ -219,16 +219,14 @@ def criar_banca(dados: dict, usuario, request=None) -> Banca:
         criada_por_id=usuario.id,
     )
     for m in membros:
-        if str(m.get("professor_id")) == str(ref.orientador_id):
+        if str(m.get("professor_id")) == str(monografia.orientador_id):
             m = {**m, "funcao": "orientador"}
-        adicionar_membro(banca, m, ref, usuario, request)
+        adicionar_membro(banca, m, monografia, usuario, request)
     registrar_auditoria("banca_criada", "banca", banca.id, request=request, usuario=usuario)
     return banca
 
 
-# --- confirmação ------------------------------------------------------------------------
-
-
+# Confirmação
 @transaction.atomic
 def responder_convite(membro: MembroBanca, resposta: str, usuario=None, request=None) -> MembroBanca:
     if membro.banca.status not in (Banca.Status.EM_ORGANIZACAO, Banca.Status.AGENDADA):
@@ -249,9 +247,7 @@ def responder_convite(membro: MembroBanca, resposta: str, usuario=None, request=
     return membro
 
 
-# --- etapa 2: agendamento ------------------------------------------------------------------
-
-
+# Etapa 2: agendamento
 def _chaves_lock(membros) -> list[str]:
     chaves = {f"email:{m.email.lower()}" for m in membros}
     chaves |= {f"prof:{m.professor_id}" for m in membros if m.professor_id}
@@ -294,8 +290,8 @@ def conflitos_de_horario(banca: Banca, membros) -> list[dict]:
 def agendar(banca_id, usuario, request=None) -> Banca:
     with transaction.atomic():
         banca = Banca.objects.select_for_update().get(pk=banca_id)
-        ref = obter_monografia(banca.monografia_id)
-        if not pode_gerir_banca(usuario, ref):
+        monografia = obter_monografia(banca.monografia_id)
+        if not pode_gerir_banca(usuario, monografia):
             raise ErroNegocio("Sem permissão para agendar esta banca.", codigo="acesso_negado", status_code=403)
         if banca.status != Banca.Status.EM_ORGANIZACAO:
             raise ErroNegocio(
@@ -315,7 +311,7 @@ def agendar(banca_id, usuario, request=None) -> Banca:
                 codigo="confirmacoes_pendentes",
                 detalhes={"membros": pendentes},
             )
-        exigir_aprovacao_orientador(ref)
+        exigir_aprovacao_orientador(monografia)
         # lock por membro (advisory lock transacional) => sem race condition entre agendamentos concorrentes
         with connection.cursor() as cur:
             for chave in _chaves_lock(membros):
@@ -334,10 +330,10 @@ def agendar(banca_id, usuario, request=None) -> Banca:
             {
                 "banca_id": banca.id,
                 "monografia_id": banca.monografia_id,
-                "titulo": ref.titulo,
-                "aluno_id": ref.aluno_id,
-                "orientador_id": ref.orientador_id,
-                "curso_id": ref.curso_id,
+                "titulo": monografia.titulo,
+                "aluno_id": monografia.aluno_id,
+                "orientador_id": monografia.orientador_id,
+                "curso_id": monografia.curso_id,
                 "data_hora": banca.data_hora_inicio,
                 "duracao_minutos": banca.duracao_minutos,
                 "local": banca.local,
@@ -359,9 +355,7 @@ def agendar(banca_id, usuario, request=None) -> Banca:
         return banca
 
 
-# --- edição / cancelamento / realização ------------------------------------------------------
-
-
+# Edição / cancelamento / realização
 @transaction.atomic
 def editar_banca(banca: Banca, dados: dict, usuario, request=None) -> Banca:
     if banca.status in (Banca.Status.REALIZADA, Banca.Status.CANCELADA):
@@ -414,7 +408,7 @@ def _revogar_tokens(banca: Banca, usuario=None, request=None, motivo: str = "") 
 def cancelar(banca: Banca, motivo: str, usuario, request=None) -> Banca:
     if banca.status in (Banca.Status.REALIZADA, Banca.Status.CANCELADA):
         raise ErroNegocio("Banca já realizada ou cancelada.", codigo="banca_nao_editavel")
-    ref = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
+    monografia = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
     banca.status = Banca.Status.CANCELADA
     banca.motivo_cancelamento = motivo
     banca.save()
@@ -424,8 +418,8 @@ def cancelar(banca: Banca, motivo: str, usuario, request=None) -> Banca:
         {
             "banca_id": banca.id,
             "monografia_id": banca.monografia_id,
-            "aluno_id": ref.aluno_id if ref else None,
-            "titulo": ref.titulo if ref else "",
+            "aluno_id": monografia.aluno_id if monografia else None,
+            "titulo": monografia.titulo if monografia else "",
             "motivo": motivo,
             "data_hora": banca.data_hora_inicio,
             "membros": [{"nome": m.nome, "email": m.email, "tipo": m.tipo} for m in banca.membros.all()],
@@ -447,9 +441,7 @@ def marcar_realizada(banca: Banca, usuario, request=None) -> Banca:
     return banca
 
 
-# --- avaliações e resultado ------------------------------------------------------------------
-
-
+# Avaliações e resultado
 def _exigir_aberta_para_avaliacao(banca: Banca) -> None:
     if banca.status != Banca.Status.REALIZADA:
         raise ErroNegocio("Avaliações só são aceitas após a realização da banca.", codigo="banca_nao_realizada")
@@ -506,6 +498,26 @@ def editar_avaliacao(av: Avaliacao, dados: dict, usuario=None, request=None) -> 
     return av
 
 
+def excluir_avaliacao(av: Avaliacao, usuario=None, request=None) -> None:
+    """Mesma regra da edição: só enquanto o resultado da banca não foi fechado."""
+    with transaction.atomic():
+        banca = Banca.objects.select_for_update().get(pk=av.banca_id)
+        if banca.resultado_calculado_em is not None:
+            raise ErroNegocio(
+                "O resultado já foi fechado; a avaliação não pode mais ser excluída.", codigo="resultado_fechado"
+            )
+        avaliacao_id = av.id
+        av.delete()
+        registrar_auditoria(
+            "avaliacao_excluida",
+            "banca",
+            banca.id,
+            request=request,
+            usuario=usuario,
+            detalhes={"avaliacao_id": str(avaliacao_id)},
+        )
+
+
 def calcular_resultado(banca_id) -> Banca | None:
     """Fecha o resultado somente quando TODOS os membros ativos avaliaram (idempotente)."""
     banca = Banca.objects.select_for_update().filter(pk=banca_id).first()
@@ -530,16 +542,16 @@ def calcular_resultado(banca_id) -> Banca | None:
     banca.status = Banca.Status.REALIZADA
     banca.save()
     _revogar_tokens(banca, motivo="resultado_fechado")
-    ref = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
+    monografia = MonografiaRef.objects.filter(pk=banca.monografia_id).first()
     registrar_evento(
         "banca.resultado_calculado",
         {
             "banca_id": banca.id,
             "monografia_id": banca.monografia_id,
-            "aluno_id": ref.aluno_id if ref else None,
-            "orientador_id": ref.orientador_id if ref else None,
-            "curso_id": ref.curso_id if ref else None,
-            "titulo": ref.titulo if ref else "",
+            "aluno_id": monografia.aluno_id if monografia else None,
+            "orientador_id": monografia.orientador_id if monografia else None,
+            "curso_id": monografia.curso_id if monografia else None,
+            "titulo": monografia.titulo if monografia else "",
             "resultado": resultado,
             "media": str(media),
             "exige_correcao": exige,

@@ -1,4 +1,4 @@
-"""Adapter do allauth: cadastro público desabilitado (P2)."""
+"""Contas são criadas pela coordenação: o cadastro público do allauth fica desligado."""
 
 from allauth.account.adapter import DefaultAccountAdapter
 

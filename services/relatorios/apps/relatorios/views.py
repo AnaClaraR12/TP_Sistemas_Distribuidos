@@ -1,4 +1,4 @@
-"""GET /api/relatorios/<nome>/ — escopo pelo papel (Anexo D), cache Redis de 60 s."""
+"""Cada papel vê só o seu recorte (admin tudo, coordenador os cursos, professor os orientandos, aluno o seu)."""
 
 from django.http import Http404
 from drf_spectacular.utils import extend_schema

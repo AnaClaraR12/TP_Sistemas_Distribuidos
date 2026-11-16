@@ -13,9 +13,7 @@ from .conftest import arquivo_pdf
 pytestmark = pytest.mark.django_db
 
 
-# --- CRUD ------------------------------------------------------------------------------
-
-
+# CRUD
 def test_criar_sem_barra_final_e_dados_do_jwt(cenario):
     r = cenario.aluno.client.post(
         "/api/monografias",
@@ -109,9 +107,7 @@ def test_excluir_publicada_409(cenario, publicada):
         assert r.status_code == 409 and r.data["codigo"] == "monografia_publicada_imutavel"
 
 
-# --- submissão e máquina de estados --------------------------------------------------
-
-
+# Submissão e máquina de estados
 def test_submeter_incompleta_400(cenario, criar_rascunho):
     mid = criar_rascunho(palavras_chave=["só uma"])
     r = cenario.aluno.client.post(f"/api/monografias/{mid}/submeter/")
@@ -140,7 +136,8 @@ def test_submeter_202_evento_e_lock(cenario, criar_rascunho):
 def test_texto_extraido_libera_lock(cenario, criar_rascunho):
     from apps.monografias.eventos import HANDLERS
     from apps.monografias.models import Monografia
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     mid = criar_rascunho()
     cenario.aluno.client.post(f"/api/monografias/{mid}/arquivo/", {"arquivo": arquivo_pdf()}, format="multipart")
@@ -178,9 +175,7 @@ def test_transicao_invalida_409(cenario, criar_rascunho):
     assert r.status_code == 409 and r.data["codigo"] == "transicao_invalida"
 
 
-# --- aprovação do orientador ------------------------------------------------------------
-
-
+# Aprovação do orientador
 def test_aprovacao_por_nao_orientador_403(cenario, submetida):
     assert cenario.outro_prof.client.post(f"/api/monografias/{submetida}/aprovar-orientador/").status_code == 403
     assert cenario.aluno.client.post(f"/api/monografias/{submetida}/aprovar-orientador/").status_code == 403
@@ -215,12 +210,11 @@ def test_rejeicao_volta_a_rascunho(cenario, submetida):
     )
 
 
-# --- resultado da banca e publicação ------------------------------------------------------
-
-
+# Resultado da banca e publicação
 def _resultado(mid, resultado="aprovada", exige_correcao=False):
     from apps.monografias.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     env = envelope(
         "banca.resultado_calculado",
@@ -265,7 +259,8 @@ def test_resultado_banca_consumer_idempotente(cenario, aprovada_orientador):
     m = Monografia.objects.get(pk=aprovada_orientador)
     assert m.status == "aprovada" and m.exige_correcao and m.defendida_em.year == 2026
     from apps.monografias.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     assert processar_evento(env, encontrar_handler(HANDLERS, env["type"])) == "duplicado"
 
@@ -366,9 +361,7 @@ def test_documento_pdf_invalido_415(cenario, aprovada_orientador):
     assert r.status_code == 415
 
 
-# --- integridade -----------------------------------------------------------------------
-
-
+# Integridade
 def test_integridade_ok(cenario, aprovada_orientador):
     r = cenario.orientador.client.post(f"/api/monografias/{aprovada_orientador}/verificar-integridade/")
     assert r.status_code == 200 and r.data["integridade_ok"] is True
@@ -401,9 +394,7 @@ def test_comando_verificar_integridade_todas(cenario, aprovada_orientador, capsy
     assert "1 verificadas, 0 com divergência" in capsys.readouterr().out
 
 
-# --- endpoint interno ------------------------------------------------------------------
-
-
+# Endpoint interno
 def test_endpoint_interno_exige_token_de_servico(api, servico_client, submetida):
     assert api.get(f"/internal/monografias/{submetida}/arquivo/").status_code == 403
     r = servico_client.get(f"/internal/monografias/{submetida}/arquivo/")
@@ -414,7 +405,8 @@ def test_endpoint_interno_exige_token_de_servico(api, servico_client, submetida)
 def test_consumer_cadastro_mantem_read_models():
     from apps.monografias.eventos import HANDLERS
     from apps.monografias.models import ProfessorRef
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler
 
     pid = str(uuid.uuid4())
     env = envelope("cadastro.professor.upserted", {"id": pid, "nome": "P", "email": "p@x.br", "departamento": "D"})

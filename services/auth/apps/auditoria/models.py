@@ -1,5 +1,3 @@
-"""Registro centralizado de auditoria (ações de todos os serviços)."""
-
 import uuid
 
 from django.db import models

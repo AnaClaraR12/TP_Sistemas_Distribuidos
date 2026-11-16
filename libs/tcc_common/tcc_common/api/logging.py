@@ -1,7 +1,5 @@
 """Formatter de log estruturado em JSON com request_id e user_id."""
 
-from __future__ import annotations
-
 import json
 import logging
 from datetime import UTC, datetime

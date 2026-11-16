@@ -2,8 +2,6 @@
 
 from contextvars import ContextVar
 
-__version__ = "1.0.0"
-
 #: request_id da requisição/evento corrente (propagado via X-Request-ID / correlation_id)
 request_id_atual: ContextVar[str | None] = ContextVar("request_id_atual", default=None)
 

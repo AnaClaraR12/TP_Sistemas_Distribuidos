@@ -1,7 +1,3 @@
-"""Autenticação DRF por Bearer JWT (RS256) validado localmente."""
-
-from __future__ import annotations
-
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import authentication, exceptions
 

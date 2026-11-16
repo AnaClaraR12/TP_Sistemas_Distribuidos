@@ -1,5 +1,3 @@
-"""Settings do auth-service."""
-
 from pathlib import Path
 
 from tcc_common.settings_base import construir, env
@@ -8,7 +6,6 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 globals().update(
     construir(
         servico="auth",
-        porta=8001,
         base_dir=BASE_DIR,
         apps=[
             "django.contrib.admin",
@@ -38,7 +35,7 @@ TEMPLATES[0]["OPTIONS"]["context_processors"] += [  # noqa: F405
 
 AUTH_USER_MODEL = "contas.User"
 
-# --- Senhas: Argon2 + política forte ---
+# Senhas: Argon2 + política forte
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
@@ -54,7 +51,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "apps.contas.validators.ComplexidadeSenhaValidator"},
 ]
 
-# --- Bloqueio por tentativas (Redis login_falhas:<email>) ---
+# Bloqueio por tentativas (Redis login_falhas:<email>)
 LOGIN_MAX_FALHAS = env.int("LOGIN_MAX_FALHAS", default=5)
 LOGIN_JANELA_S = env.int("LOGIN_JANELA_S", default=900)
 
@@ -64,11 +61,11 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-# --- Sessões no Redis (Django Admin / allauth) ---
+# Sessões no Redis (Django Admin / allauth)
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "sessoes"
 
-# --- django-allauth ---
+# Django-allauth
 ACCOUNT_ADAPTER = "apps.contas.adapters.ContaAdapter"
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
@@ -82,20 +79,20 @@ LOGIN_URL = "/api/auth/contas/login/"
 LOGIN_REDIRECT_URL = env("FRONTEND_URL", default="http://localhost:8080")
 ACCOUNT_LOGOUT_REDIRECT_URL = LOGIN_URL
 
-# --- E-mail (MailHog em dev) ---
+# E-mail (MailHog em dev)
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
 EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="TCC <nao-responda@tcc.local>")
 
-# --- JWT RS256 (emissão) ---
+# JWT RS256 (emissão)
 JWT_PRIVATE_KEY = env("JWT_PRIVATE_KEY", default="")
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", default="/run/secrets/jwt_private.pem")
 JWT_ACCESS_MINUTOS = env.int("JWT_ACCESS_MINUTOS", default=15)
 JWT_REFRESH_DIAS = env.int("JWT_REFRESH_DIAS", default=7)
 
-# --- Auditoria: no auth-service grava direto, sem passar pela fila ---
+# Auditoria: no auth-service grava direto, sem passar pela fila
 AUDITORIA_HANDLER_LOCAL = "apps.auditoria.servicos.gravar_registro"
 
-# --- Consumer: centraliza audit.registro e alertas de integridade ---
+# Consumer: centraliza audit.registro e alertas de integridade
 EVENT_HANDLERS = "apps.auditoria.eventos.HANDLERS"

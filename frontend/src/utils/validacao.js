@@ -2,14 +2,14 @@
 
 export const MAX_UPLOAD_MB = 50;
 
-export function validarPdf(arquivo, maxMb = MAX_UPLOAD_MB) {
+export function validarPdf(arquivo) {
   if (!arquivo) return "Selecione um arquivo PDF.";
   const nome = (arquivo.name || "").toLowerCase();
   if (!nome.endsWith(".pdf")) return "Somente arquivos PDF são aceitos.";
   if (arquivo.type && !["application/pdf", "application/x-pdf"].includes(arquivo.type)) {
     return "Somente arquivos PDF são aceitos.";
   }
-  if (arquivo.size > maxMb * 1024 * 1024) return `O arquivo excede ${maxMb} MB.`;
+  if (arquivo.size > MAX_UPLOAD_MB * 1024 * 1024) return `O arquivo excede ${MAX_UPLOAD_MB} MB.`;
   if (arquivo.size === 0) return "Arquivo vazio.";
   return null;
 }

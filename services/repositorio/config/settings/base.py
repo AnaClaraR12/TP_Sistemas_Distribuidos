@@ -1,11 +1,9 @@
-"""Settings do repositorio-service."""
-
 from pathlib import Path
 
 from tcc_common.settings_base import construir, env
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-globals().update(construir(servico="repositorio", porta=8004, base_dir=BASE_DIR, apps=["apps.indexacao"]))
+globals().update(construir(servico="repositorio", base_dir=BASE_DIR, apps=["apps.indexacao"]))
 
 MIDDLEWARE.insert(
     MIDDLEWARE.index("django.middleware.common.CommonMiddleware"),  # noqa: F405

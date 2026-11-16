@@ -1,7 +1,3 @@
-"""Endpoints de autenticação: token, refresh, logout, me, dashboard-config, JWKS."""
-
-from __future__ import annotations
-
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.signals import user_logged_in
 from django.http import JsonResponse

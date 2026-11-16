@@ -1,7 +1,3 @@
-"""Usuário customizado: UUID, login por e-mail e papel."""
-
-from __future__ import annotations
-
 import uuid
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -30,7 +26,7 @@ GRUPO_POR_PAPEL = {
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
-    def _criar(self, email: str, password: str | None, **extra) -> User:
+    def _criar(self, email: str, password: str | None, **extra) -> "User":
         if not email:
             raise ValueError("O e-mail é obrigatório.")
         user = self.model(email=self.normalize_email(email).lower(), **extra)
@@ -41,13 +37,13 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_user(self, email: str, password: str | None = None, **extra) -> User:
+    def create_user(self, email: str, password: str | None = None, **extra) -> "User":
         extra.setdefault("papel", Papel.ALUNO)
         extra.setdefault("is_staff", False)
         extra.setdefault("is_superuser", False)
         return self._criar(email, password, **extra)
 
-    def create_superuser(self, email: str, password: str | None = None, **extra) -> User:
+    def create_superuser(self, email: str, password: str | None = None, **extra) -> "User":
         extra.update(papel=Papel.ADMIN, is_staff=True, is_superuser=True)
         return self._criar(email, password, **extra)
 

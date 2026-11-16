@@ -1,7 +1,5 @@
 """Emissão de JWT RS256 (access 15 min, refresh 7 dias) e JWKS."""
 
-from __future__ import annotations
-
 import base64
 import hashlib
 import json

@@ -1,11 +1,9 @@
-"""Máquina de estados da Monografia (Anexo B).
+"""Máquina de estados da Monografia.
 
 Transições só acontecem pelos métodos de domínio do model (``submeter()``,
 ``aprovar_orientador()``, ``rejeitar_orientador()``, ``registrar_resultado_banca()``,
 ``publicar()``). Uma transição fora deste grafo levanta ``TransicaoInvalida`` (HTTP 409).
 """
-
-from __future__ import annotations
 
 from django.db import models
 

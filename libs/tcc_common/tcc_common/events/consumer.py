@@ -1,17 +1,13 @@
-"""Consumer base: idempotência, ack após commit, retry com backoff e DLQ.
+"""Consumer de eventos: idempotência, ack depois do commit, retry com backoff e DLQ.
 
-Os handlers de cada serviço são funções ``handler(envelope: dict) -> None`` registradas
-num dicionário ``{binding: handler}`` (binding no formato topic: ``cadastro.#``).
-Um handler pode ter o atributo ``falha_definitiva(envelope, exc)`` chamado quando as
-tentativas se esgotam (antes de ir para a DLQ).
+Cada serviço registra ``{binding: handler}`` em ``settings.EVENT_HANDLERS``. Cada binding
+vira uma fila própria, então quem decide o handler é o RabbitMQ, não este código.
+Se o handler tiver o atributo ``falha_definitiva(envelope, exc)``, ele é chamado
+quando as tentativas acabam, antes da mensagem ir para a DLQ.
 """
-
-from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
-from typing import Any
 
 import pika
 from django.db import IntegrityError, close_old_connections, connection, transaction
@@ -23,38 +19,14 @@ from tcc_common.events.models import EventoProcessado
 
 logger = logging.getLogger(__name__)
 
-Handler = Callable[[dict[str, Any]], None]
 CABECALHO_TENTATIVAS = "x-tentativas"
 
 
-def casar_routing_key(padrao: str, chave: str) -> bool:
-    """Casamento no estilo exchange *topic* (``*`` = uma palavra, ``#`` = zero ou mais)."""
-    p, c = padrao.split("."), chave.split(".")
+def processar_evento(envelope, handler):
+    """Roda o handler numa transação e marca o evento como processado.
 
-    def _casa(i: int, j: int) -> bool:
-        if i == len(p):
-            return j == len(c)
-        if p[i] == "#":
-            return any(_casa(i + 1, k) for k in range(j, len(c) + 1))
-        if j == len(c):
-            return False
-        return (p[i] == "*" or p[i] == c[j]) and _casa(i + 1, j + 1)
-
-    return _casa(0, 0)
-
-
-def encontrar_handler(handlers: dict[str, Handler], tipo: str) -> Handler | None:
-    for padrao, handler in handlers.items():
-        if casar_routing_key(padrao, tipo):
-            return handler
-    return None
-
-
-def processar_evento(envelope: dict[str, Any], handler: Handler) -> str:
-    """Executa o handler de forma idempotente, numa transação.
-
-    Retorna ``"processado"`` ou ``"duplicado"``. Exceções do handler propagam
-    (a transação é revertida e o evento NÃO é marcado como processado).
+    Devolve "processado" ou "duplicado". Se o handler levantar exceção, a transação
+    é desfeita e o evento continua não processado (vai para retry).
     """
     event_id = envelope["event_id"]
     token = request_id_atual.set(envelope.get("correlation_id"))
@@ -76,42 +48,36 @@ def processar_evento(envelope: dict[str, Any], handler: Handler) -> str:
 
 
 class BaseConsumer:
-    """Consome as filas do serviço. Executado por ``manage.py run_consumer``."""
-
-    def __init__(self, servico: str, handlers: dict[str, Handler] | str, prefetch: int = 10) -> None:
+    def __init__(self, servico, handlers, prefetch=10):
         self.servico = servico
-        self.handlers: dict[str, Handler] = import_string(handlers) if isinstance(handlers, str) else handlers
+        self.handlers = import_string(handlers) if isinstance(handlers, str) else handlers
         self.prefetch = prefetch
-        self.filas: dict[str, rabbit.FilasConsumer] = {}
+        self.filas = {}
 
-    def declarar(self, canal) -> None:
+    def declarar(self, canal):
         for binding in self.handlers:
             self.filas[binding] = rabbit.declarar_fila_consumer(canal, self.servico, binding)
 
-    def _on_message(self, canal, method, properties, body: bytes, binding: str) -> None:
+    def _on_message(self, canal, method, properties, body, binding):
         filas = self.filas[binding]
+        handler = self.handlers[binding]
         try:
             envelope = json.loads(body)
-            handler = encontrar_handler({binding: self.handlers[binding]}, envelope["type"])
-            if handler is None:
-                raise ValueError(f"Sem handler para {envelope.get('type')}")
-        except Exception as exc:  # mensagem malformada: direto para a DLQ
+            tipo = envelope["type"]
+        except (ValueError, KeyError, TypeError) as exc:
+            # mensagem que nem é um envelope: tentar de novo não adianta
             logger.error("mensagem_invalida", extra={"fila": filas.principal, "erro": str(exc)})
             canal.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             return
 
-        extra = {
-            "event_id": envelope.get("event_id"),
-            "tipo": envelope.get("type"),
-            "correlation_id": envelope.get("correlation_id"),
-        }
-        if not connection.in_atomic_block:  # recicla conexões velhas entre mensagens
+        extra = {"event_id": envelope.get("event_id"), "tipo": tipo, "correlation_id": envelope.get("correlation_id")}
+        if not connection.in_atomic_block:
             close_old_connections()
         try:
             resultado = processar_evento(envelope, handler)
             logger.info("evento_" + resultado, extra=extra)
-            canal.basic_ack(delivery_tag=method.delivery_tag)  # ack só após o commit
-        except Exception as exc:  # noqa: BLE001
+            canal.basic_ack(delivery_tag=method.delivery_tag)  # ack só depois do commit
+        except Exception as exc:  # noqa: BLE001 - qualquer falha do handler vira retry ou DLQ
             tentativas = int((properties.headers or {}).get(CABECALHO_TENTATIVAS, 0)) + 1
             logger.warning("evento_falhou", extra={**extra, "tentativa": tentativas, "erro": repr(exc)})
             if tentativas <= len(filas.retries):
@@ -129,18 +95,18 @@ class BaseConsumer:
                     ),
                 )
                 canal.basic_ack(delivery_tag=method.delivery_tag)
-            else:
-                falha = getattr(handler, "falha_definitiva", None)
-                if falha:
-                    try:
-                        with transaction.atomic():
-                            falha(envelope, exc)
-                    except Exception:  # noqa: BLE001
-                        logger.exception("falha_definitiva_erro", extra=extra)
-                logger.error("evento_enviado_dlq", extra=extra)
-                canal.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                return
+            falha = getattr(handler, "falha_definitiva", None)
+            if falha:
+                try:
+                    with transaction.atomic():
+                        falha(envelope, exc)
+                except Exception:  # noqa: BLE001 - a mensagem vai para a DLQ de qualquer jeito
+                    logger.exception("falha_definitiva_erro", extra=extra)
+            logger.error("evento_enviado_dlq", extra=extra)
+            canal.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-    def executar(self) -> None:  # pragma: no cover - laço de I/O, coberto por teste de integração
+    def executar(self):  # pragma: no cover - laço de I/O, coberto pelo teste de integração
         conn = rabbit.abrir_conexao()
         canal = conn.channel()
         canal.basic_qos(prefetch_count=self.prefetch)

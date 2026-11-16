@@ -13,23 +13,6 @@ from .conftest import dados_mono, dados_publicada, pdf_com_texto, pdf_sem_texto
 
 pytestmark = pytest.mark.django_db
 
-CORPO = "Capitulo 1\nA arquitetura usa um balanceador quiescente para orquestrar replicas.\nConclusao final."
-
-
-@pytest.fixture
-def publicar(processar, mock_pdf):
-    def _publicar(paginas=None, **kw):
-        base = dados_mono(**{k: v for k, v in kw.items() if k in ("titulo", "orientador_id", "curso_id")})
-        conteudo = pdf_com_texto(paginas or [CORPO])
-        mock_pdf(base["id"], conteudo)
-        assert processar("monografia.submetida", base) == "processado"
-        sha = hashlib.sha256(conteudo).hexdigest()
-        extras = {k: v for k, v in kw.items() if k not in ("titulo", "orientador_id", "curso_id")}
-        assert processar("monografia.publicada", dados_publicada(base, sha, **extras)) == "processado"
-        return base["id"]
-
-    return _publicar
-
 
 def test_extracao_assincrona_indexa_sem_publicar(processar, mock_pdf, api):
     from apps.indexacao.models import DocumentoIndexado
@@ -85,8 +68,8 @@ def test_download_indisponivel_gera_retry_e_falha_definitiva(processar, mock_pdf
 
 def test_idempotencia_da_extracao(processar, mock_pdf):
     from apps.indexacao.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
-    from tcc_common.testing import envelope
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler, envelope
 
     base = dados_mono()
     mock_pdf(base["id"], pdf_com_texto(["texto"]))
@@ -288,8 +271,8 @@ def test_cache_so_invalida_apos_commit(processar, mock_pdf, django_capture_on_co
     import hashlib
 
     from apps.indexacao.eventos import HANDLERS
-    from tcc_common.events.consumer import encontrar_handler, processar_evento
-    from tcc_common.testing import envelope
+    from tcc_common.events.consumer import processar_evento
+    from tcc_common.testing import encontrar_handler, envelope
 
     base = dados_mono()
     conteudo = pdf_com_texto(["corpo"])

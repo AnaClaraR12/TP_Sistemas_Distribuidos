@@ -1,7 +1,5 @@
 """Healthchecks: /health/ (liveness) e /ready/ (Postgres, Redis, RabbitMQ)."""
 
-from __future__ import annotations
-
 import socket
 
 from django.conf import settings

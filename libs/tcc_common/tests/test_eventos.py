@@ -1,7 +1,5 @@
 """Biblioteca de eventos: envelope, outbox, publisher, consumer (idempotência, retry, DLQ)."""
 
-from __future__ import annotations
-
 import json
 import uuid
 from types import SimpleNamespace
@@ -9,10 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from tcc_common.events import rabbit
-from tcc_common.events.consumer import BaseConsumer, casar_routing_key, processar_evento
+from tcc_common.events.consumer import BaseConsumer, processar_evento
 from tcc_common.events.models import EventoProcessado, OutboxEvento
 from tcc_common.events.outbox import criar_envelope, registrar_evento
 from tcc_common.events.schemas import EventoInvalido
+from tcc_common.testing import casar_routing_key
 
 pytestmark = pytest.mark.django_db
 
@@ -235,3 +234,12 @@ def test_mensagem_malformada_vai_direto_para_dlq():
 def test_nome_fila():
     assert rabbit.nome_fila("monografias", "cadastro.#") == "monografias.cadastro.todos"
     assert rabbit.nome_fila("bancas", "monografia.*") == "bancas.monografia.qualquer"
+
+
+@pytest.mark.parametrize("corpo", [b'{"event_id": "x"}', b"[1, 2]", b'"texto"'])
+def test_envelope_sem_tipo_vai_direto_para_dlq(corpo):
+    canal = CanalFalso()
+    method = SimpleNamespace(delivery_tag=5)
+    props = SimpleNamespace(headers=None, message_id="x", correlation_id=None, type=None)
+    _consumer(lambda e: None)._on_message(canal, method, props, corpo, binding="repositorio.indexado")
+    assert canal.nacks == [(5, False)] and not canal.acks and not canal.publicados

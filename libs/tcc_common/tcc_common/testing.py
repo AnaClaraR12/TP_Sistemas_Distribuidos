@@ -4,8 +4,6 @@ Fornece chaves JWT de teste, clientes autenticados por papel, Redis falso e help
 para inspecionar o outbox e montar envelopes de eventos.
 """
 
-from __future__ import annotations
-
 import time
 import uuid
 from dataclasses import dataclass
@@ -144,3 +142,30 @@ def envelope(tipo: str, data: dict, **kw) -> dict:
     from tcc_common.events.outbox import criar_envelope
 
     return criar_envelope(tipo, data, **kw)
+
+
+def casar_routing_key(padrao: str, chave: str) -> bool:
+    """Imita o exchange topic do RabbitMQ (``*`` = uma palavra, ``#`` = zero ou mais).
+
+    Em produção quem roteia é o broker; aqui serve para os testes chamarem o handler
+    certo a partir do tipo do evento, sem RabbitMQ.
+    """
+    p, c = padrao.split("."), chave.split(".")
+
+    def casa(i: int, j: int) -> bool:
+        if i == len(p):
+            return j == len(c)
+        if p[i] == "#":
+            return any(casa(i + 1, k) for k in range(j, len(c) + 1))
+        if j == len(c):
+            return False
+        return (p[i] == "*" or p[i] == c[j]) and casa(i + 1, j + 1)
+
+    return casa(0, 0)
+
+
+def encontrar_handler(handlers: dict, tipo: str):
+    for padrao, handler in handlers.items():
+        if casar_routing_key(padrao, tipo):
+            return handler
+    return None
