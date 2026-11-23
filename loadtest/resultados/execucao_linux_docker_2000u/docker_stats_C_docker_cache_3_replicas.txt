@@ -1,0 +1,6 @@
+tcc_linux-repositorio-service-3 16.63% 155.7MiB / 11.68GiB
+tcc_linux-repositorio-service-2 16.37% 161.6MiB / 11.68GiB
+tcc_linux-gateway-1 115.38% 117.2MiB / 11.68GiB
+tcc_linux-repositorio-service-1 19.44% 176.1MiB / 11.68GiB
+tcc_linux-redis-1 6.48% 55.6MiB / 11.68GiB
+tcc_linux-postgres-1 29.41% 198.8MiB / 11.68GiB

@@ -86,8 +86,14 @@ reenviar aos destinatários que já receberam) e o comando `reenviar_notificacoe
 
 ## Ambiente de desenvolvimento sem Docker (registro desta entrega)
 
-A máquina usada para construir esta entrega **não tinha Docker/WSL**. Todo o código foi validado com:
-PostgreSQL 16 embutido (`pgserver`, com tzdata copiado — `scripts/dev_local_postgres.py`), Redis falso
-(`fakeredis`, em memória nos testes e em TCP no teste de carga) e testes unitários/contrato dos consumers.
-O `docker compose`, o RabbitMQ real e o E2E contra o gateway estão prontos, mas **devem ser executados
-numa máquina Linux com Docker** (ver README).
+O desenvolvimento começou numa estação Windows sem Docker, validando o código com PostgreSQL 16 embutido
+(`pgserver`, com tzdata copiado — `scripts/dev_local_postgres.py`), Redis falso (`fakeredis`, em memória nos
+testes e em TCP no teste de carga) e testes unitários/contrato dos consumers.
+
+**A plataforma do projeto é Linux.** Em 22/11/2026 tudo foi executado em Ubuntu 24.04 (WSL2) com Docker:
+os 23 containers, `make seed`, `make test`, `make test-integracao` (RabbitMQ real), `make e2e` e o teste de carga
+pelo gateway (resultados no README e em `TESTE_DE_CARGA.md`). Essa execução revelou e corrigiu três problemas
+que não apareciam no Windows ou sem Docker: (1) no Linux o `pgserver` conecta por socket Unix e a URL do banco
+era montada com `rsplit("/")`, que cortava o caminho do socket (agora `url_do_banco`, com `urllib.parse`);
+(2) `make test-integracao` herdava `DJANGO_SETTINGS_MODULE=config.settings.prod` da imagem; (3) o teste E2E de
+réplicas usava o `docker-compose.override.yml`, cuja porta fixa 8004 impede mais de uma réplica.

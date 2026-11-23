@@ -1,7 +1,7 @@
 """Roda TODOS os testes Python sem Docker: sobe um PostgreSQL 16 embutido (pgserver) e executa
 o pytest de cada serviço + da biblioteca tcc_common, com cobertura.
 
-Uso:  pip install pgserver tzdata && python scripts/run_tests_local.py [--sem-cobertura]
+Uso:  pip install pgserver tzdata && python3 scripts/run_tests_local.py [--sem-cobertura]
 """
 
 import os
@@ -15,15 +15,14 @@ SERVICOS = ["auth", "monografias", "bancas", "repositorio", "notificacoes", "rel
 
 def main() -> int:
     sys.path.insert(0, str(RAIZ / "scripts"))
-    from dev_local_postgres import criar_databases, obter_uri
+    from dev_local_postgres import criar_databases, obter_uri, url_do_banco
 
     uri = obter_uri()
     criar_databases(uri)
-    base = uri.rsplit("/", 1)[0]
     cobertura = "--sem-cobertura" not in sys.argv
     falhas = []
-    alvos = [(RAIZ / "libs" / "tcc_common", f"{base}/postgres", "tcc_common")]
-    alvos += [(RAIZ / "services" / s, f"{base}/{s}_db", "apps") for s in SERVICOS]
+    alvos = [(RAIZ / "libs" / "tcc_common", url_do_banco(uri, "postgres"), "tcc_common")]
+    alvos += [(RAIZ / "services" / s, url_do_banco(uri, f"{s}_db"), "apps") for s in SERVICOS]
     for pasta, db, pacote in alvos:
         print(f"\n===== {pasta.name} =====", flush=True)
         cmd = [sys.executable, "-m", "pytest", "-p", "no:warnings", "-o", "addopts=-p tcc_common.testing", "-q"]

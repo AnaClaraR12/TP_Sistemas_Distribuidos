@@ -1,6 +1,7 @@
-# Atalhos do projeto (Linux / WSL2 com Docker).
+# Atalhos do projeto (Linux com Docker).
 SERVICOS := auth monografias bancas repositorio notificacoes relatorios
 DC := docker compose
+PYTHON ?= python3
 
 .PHONY: help keys env up down logs ps migrate test test-local test-integracao lint fmt seed e2e loadtest scale build clean
 
@@ -46,10 +47,11 @@ test:  ## roda pytest de cada serviço dentro do seu container (requer `make up`
 	done
 
 test-local:  ## roda TODOS os testes sem Docker (Postgres embutido via pgserver)
-	python scripts/run_tests_local.py
+	$(PYTHON) scripts/run_tests_local.py
 
 test-integracao:  ## testes contra RabbitMQ real (precisa do compose de pé)
 	$(DC) run --rm --no-deps --entrypoint sh -w /libs/tcc_common -e RABBITMQ_URL_TESTE=$(RABBITMQ_URL) \
+	  -e DJANGO_SETTINGS_MODULE=tests.settings_teste \
 	  -e DATABASE_URL=postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/postgres auth-service \
 	  -c "pip install --user -q pytest pytest-django fakeredis && python -m pytest tests -p no:cacheprovider"
 
@@ -62,13 +64,13 @@ fmt:  ## formata o código
 	black libs services scripts loadtest tests
 
 seed:  ## popula dados de demonstração via API do gateway
-	python scripts/seed_demo.py --gateway http://localhost:8080
+	$(PYTHON) scripts/seed_demo.py --gateway http://localhost:8080
 
 e2e:  ## teste ponta a ponta contra o gateway (sistema de pé + seed)
-	pytest tests/e2e -v
+	$(PYTHON) -m pytest tests/e2e -v
 
 loadtest:  ## teste de carga (pico de defesa) — ver loadtest/README.md
-	locust -f loadtest/locustfile.py --host http://localhost:8080 --headless -u 1000 -r 50 -t 5m --csv loadtest/resultados/pico
+	$(PYTHON) -m locust -f loadtest/locustfile.py --host http://localhost:8080 --headless -u 1000 -r 50 -t 5m --csv loadtest/resultados/pico
 
 scale:  ## 3 réplicas do repositório e dos workers (sem o override, que fixa portas por serviço)
 	$(DC) -f docker-compose.yml up -d --scale repositorio-service=3 --scale repositorio-worker=3 --scale monografias-service=2

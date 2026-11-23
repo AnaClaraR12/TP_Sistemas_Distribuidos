@@ -1,9 +1,9 @@
 """Sobe um PostgreSQL 16 embutido (pacote ``pgserver``) para rodar os testes SEM Docker.
 
-Uso (Windows/Linux/macOS)::
+Uso (Linux)::
 
-    pip install pgserver
-    python scripts/dev_local_postgres.py            # imprime a DATABASE_URL base
+    pip install pgserver tzdata
+    python3 scripts/dev_local_postgres.py           # imprime a DATABASE_URL base
 
 O alvo oficial do projeto é Docker Compose (Postgres do container); este script existe
 apenas para desenvolvimento/testes locais em máquinas sem Docker.
@@ -15,10 +15,11 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 
 def _garantir_timezones() -> None:
-    """O build Windows do pgserver não traz share/postgresql/timezone: copiamos do pacote tzdata."""
+    """Garante share/postgresql/timezone no pgserver (alguns builds não trazem): copia do pacote tzdata."""
     import shutil
 
     import pgserver
@@ -27,6 +28,16 @@ def _garantir_timezones() -> None:
     destino = Path(pgserver.__file__).parent / "pginstall" / "share" / "postgresql" / "timezone"
     if not destino.exists():
         shutil.copytree(Path(tzdata.__file__).parent / "zoneinfo", destino)
+
+
+def url_do_banco(uri: str, banco: str) -> str:
+    """Troca o database da URI mantendo host, porta e query.
+
+    No Linux o pgserver conecta por socket Unix (``postgresql://postgres:@/postgres?host=/caminho``):
+    a query também tem barras, então não dá para trocar o nome com ``rsplit("/")``.
+    """
+    partes = urlsplit(uri)
+    return urlunsplit(partes._replace(path=f"/{banco}"))
 
 
 def criar_databases(uri: str) -> None:
@@ -52,6 +63,5 @@ def obter_uri() -> str:
 if __name__ == "__main__":
     uri = obter_uri()
     criar_databases(uri)
-    base = uri.rsplit("/", 1)[0]
-    print(base)
+    print(url_do_banco(uri, "postgres"))
     sys.exit(0)

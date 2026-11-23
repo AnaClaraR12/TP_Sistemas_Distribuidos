@@ -4,7 +4,7 @@ Cria: 1 admin, 2 cursos (2 coordenadores), 10 professores (2 deles coordenadores
 ~40 monografias em estados variados e 5 bancas com avaliações (3 publicadas, 1 aprovada aguardando
 termo, 1 reprovada). Senha de TODOS os usuários de demo: SEED_SENHA_PADRAO (padrão Demo@Tcc#2026).
 
-Uso (com o sistema de pé):  python scripts/seed_demo.py --gateway http://localhost:8080
+Uso (com o sistema de pé):  python3 scripts/seed_demo.py --gateway http://localhost:8080
 Requer acesso ao `docker compose` (para criar o admin e definir as senhas de demo).
 """
 

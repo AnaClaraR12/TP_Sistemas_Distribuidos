@@ -2,9 +2,10 @@
 
 Cenários: (A) 1 réplica sem cache, (B) 1 réplica com cache Redis, (C) 3 réplicas com cache.
 Infra local: PostgreSQL 16 embutido (pgserver), servidor Redis-compatível em TCP (fakeredis) e
-réplicas do repositorio-service servidas por waitress; o Locust balanceia entre as réplicas.
+réplicas do repositorio-service servidas por Gunicorn (o mesmo servidor dos containers); o Locust
+balanceia entre as réplicas. Requer Linux (Gunicorn não roda no Windows; lá, use o WSL2).
 
-Uso: python loadtest/rodar_local.py --usuarios 400 --duracao 60
+Uso: python3 loadtest/rodar_local.py --usuarios 400 --duracao 60
 Saída: loadtest/resultados/<cenario>_stats.csv, cache_<cenario>.json e resumo_local.json
 """
 
@@ -26,6 +27,7 @@ SERVICO = RAIZ / "services" / "repositorio"
 RESULTADOS = RAIZ / "loadtest" / "resultados"
 PY = sys.executable
 PORTA_REDIS = 6390
+WORKERS_POR_REPLICA = int(os.environ.get("GUNICORN_WORKERS", "2"))
 
 
 def iniciar_redis() -> subprocess.Popen:
@@ -90,13 +92,15 @@ def cenario(
                 [
                     PY,
                     "-m",
-                    "waitress",
-                    f"--listen=127.0.0.1:{porta}",
-                    "--threads=16",
-                    "--connection-limit=4000",
-                    "--backlog=4096",
-                    "--channel-timeout=60",
+                    "gunicorn",
                     "config.wsgi:application",
+                    "-c",
+                    "gunicorn.conf.py",
+                    f"--bind=127.0.0.1:{porta}",
+                    f"--workers={WORKERS_POR_REPLICA}",
+                    "--backlog=4096",
+                    "--max-requests=0",  # sem reciclar workers: a amostragem de CPU acompanha os mesmos PIDs
+                    "--access-logfile=/dev/null",
                 ],
                 cwd=SERVICO,
                 env=env,
@@ -115,7 +119,7 @@ def cenario(
     medidas: dict = {}
     parar = threading.Event()
     procs = []
-    for s in servidores:  # no Windows o python.exe do venv é um lançador: mede também os filhos
+    for s in servidores:  # mede o master do Gunicorn e os workers (processos filhos)
         p = psutil.Process(s.pid)
         procs += [p, *p.children(recursive=True)]
     t = threading.Thread(target=amostrar, args=(procs, parar, medidas))
@@ -198,16 +202,18 @@ def main() -> None:
     ap.add_argument("--documentos", type=int, default=3000)
     ap.add_argument("--cenarios", default="A,B,C", help="subconjunto, ex.: B,C")
     a = ap.parse_args()
+    if not sys.platform.startswith("linux"):
+        sys.exit("Este executor é para Linux (Gunicorn). No Windows, rode-o dentro do WSL2 (Ubuntu).")
     RESULTADOS.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(RAIZ / "scripts"))
     import psycopg
-    from dev_local_postgres import obter_uri
+    from dev_local_postgres import obter_uri, url_do_banco
 
-    base = obter_uri().rsplit("/", 1)[0]
-    with psycopg.connect(base + "/postgres", autocommit=True) as c:
+    uri = obter_uri()
+    with psycopg.connect(url_do_banco(uri, "postgres"), autocommit=True) as c:
         if not c.execute("select 1 from pg_database where datname='repositorio_carga'").fetchone():
             c.execute("CREATE DATABASE repositorio_carga")
-    db_url = base + "/repositorio_carga"
+    db_url = url_do_banco(uri, "repositorio_carga")
     media = RESULTADOS / "_media"
     redis_proc = iniciar_redis()
     try:

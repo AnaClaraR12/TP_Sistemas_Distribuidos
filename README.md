@@ -4,15 +4,43 @@ Trabalho de **Sistemas Distribuídos** (Prof. Alessandro Vivas Andrade): cadastr
 e publicação de monografias com **6 microsserviços Django**, **RabbitMQ**, **Redis**, **PostgreSQL**
 (database por serviço), **API Gateway Nginx** e **frontend React**.
 
+## Autores
+
+Trabalho desenvolvido por:
+
+* Ana Clara Azevedo
+* Pedro Augusto Hackner
+* Lucas Cordeiro
+* Lucas Rocha
+* Gabriel Vitor dos Santos
+
 * Arquitetura e fluxos: [docs/ARQUITETURA.md](docs/ARQUITETURA.md) · Decisões: [docs/DECISOES.md](docs/DECISOES.md)
 * Eventos: [docs/EVENTOS.md](docs/EVENTOS.md) · API: [docs/API.md](docs/API.md) · Segurança: [docs/SEGURANCA.md](docs/SEGURANCA.md)
 * Carga: [docs/TESTE_DE_CARGA.md](docs/TESTE_DE_CARGA.md) · Demonstração: [docs/ROTEIRO_DEMO.md](docs/ROTEIRO_DEMO.md)
 * Onde cada requisito do enunciado está e qual teste o prova: [seção abaixo](#requisitos-do-enunciado)
 
-## Pré-requisitos (Linux ou WSL2)
+## Pré-requisitos (Linux)
 
-* Docker 24+ com Docker Compose v2, `make`, `openssl`
-* Python 3.12+ (só para `make seed`, `make e2e` e `make loadtest` no host: `pip install requests locust pytest`)
+O sistema foi feito para rodar em **Linux** (testado em Ubuntu 22.04/24.04; a CI também roda em `ubuntu-latest`).
+Todos os serviços, o banco, o Redis, o RabbitMQ e o gateway rodam em containers Linux.
+
+* Docker Engine 24+ com Docker Compose v2, `make`, `openssl`, `git`
+* Python 3.12+ (só para `make seed`, `make e2e` e `make loadtest` no host)
+
+No Ubuntu/Debian:
+
+```bash
+sudo apt update && sudo apt install -y make openssl git python3 python3-pip python3-venv
+curl -fsSL https://get.docker.com | sudo sh          # Docker Engine + Compose v2
+sudo usermod -aG docker "$USER" && newgrp docker      # usar docker sem sudo
+python3 -m venv .venv && . .venv/bin/activate
+pip install requests locust pytest
+```
+
+> **Em uma máquina Windows:** use o **WSL2 com Ubuntu**, que é um Linux de verdade. Abra o terminal do Ubuntu,
+> clone o repositório **dentro do sistema de arquivos do Linux** (ex.: `~/tcc`, e não em `/mnt/c/...`, que é
+> lento e perde permissões de execução) e siga os passos acima. Com Docker Desktop, ative
+> *Settings → Resources → WSL integration* para a distribuição Ubuntu.
 
 ## Subir o sistema
 
@@ -53,7 +81,7 @@ cd frontend && npm ci && npm test   # Vitest + Testing Library
 ```
 
 **Sem Docker** (desenvolvimento): `pip install -e libs/tcc_common -r services/<svc>/requirements-dev.txt pgserver tzdata`
-e `python scripts/run_tests_local.py` — sobe um PostgreSQL 16 embutido e roda todos os testes.
+e `python3 scripts/run_tests_local.py` — sobe um PostgreSQL 16 embutido e roda todos os testes.
 
 ## Teste de carga
 
@@ -62,7 +90,7 @@ make scale            # 3 réplicas do repositório e dos workers
 make loadtest         # Locust: 1000 usuários, 5 min (ajuste THROTTLE_ANON/GATEWAY_RATE_* no .env)
 ```
 
-Sem Docker: `python loadtest/rodar_local.py` (3 cenários; resultados em `loadtest/resultados/`).
+Sem Docker (Linux): `python3 loadtest/rodar_local.py` (3 cenários; resultados em `loadtest/resultados/`).
 
 ## Estrutura
 
@@ -110,9 +138,19 @@ Os caminhos de teste são relativos a `services/<serviço>/tests/` (ou `frontend
 | Histórico: quem, o quê, quando | `tcc_common/audit/historico.py` | monografias `test_editar_rascunho_e_historico`, auth `test_historico_registra_quem_alterou`, frontend `componentes.test.jsx` |
 | Escalabilidade (cache, filas, réplicas) | gateway, `make scale` | `docs/TESTE_DE_CARGA.md` |
 
-Números da última verificação: 345 testes Python passando (os 3 de integração com RabbitMQ real
-passam com `make test-integracao`), 95 testes no frontend, 83 testes ponta a ponta contra o sistema
-completo, cobertura entre 91% e 95% por serviço.
+Última verificação, **em Linux** (Ubuntu 24.04 no WSL2 + Docker Engine 29.9, em 22/11/2026), com o sistema
+completo de pé (23 containers):
+
+| Suíte | Resultado |
+|---|---|
+| `make test` (pytest de cada serviço dentro do seu container) | 301 passaram |
+| `make test-integracao` (tcc_common, com o RabbitMQ real) | 51 passaram |
+| `make e2e` (ponta a ponta contra o gateway, após `make seed`) | 83 passaram |
+| `python3 scripts/run_tests_local.py` (sem Docker, Postgres embutido) | 349 passaram, 3 ignorados (exigem RabbitMQ) |
+| Frontend (`npm test`, no container `node:22-alpine`) | 98 passaram |
+
+Cobertura entre 91% e 95% por serviço. Teste de carga em Linux: 1 000 usuários pelo gateway com 0% de erros e
+p95 de 44 ms (ver [docs/TESTE_DE_CARGA.md](docs/TESTE_DE_CARGA.md)).
 
 ## Comandos úteis
 

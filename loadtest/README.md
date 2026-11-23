@@ -22,11 +22,12 @@ make scale && make loadtest                                     # 3 réplicas
 docker stats --no-stream                                        # CPU/memória
 ```
 
-## Sem Docker (executado nesta entrega)
+## Sem Docker (Linux)
 
 ```bash
-python loadtest/rodar_local.py --usuarios 400 --duracao 60
+pip install -e libs/tcc_common -r services/repositorio/requirements-dev.txt pgserver tzdata locust psutil
+python3 loadtest/rodar_local.py --usuarios 400 --duracao 60
 ```
 
-Sobe Postgres embutido, Redis-compatível em TCP e N réplicas (waitress) do repositorio-service; o Locust balanceia
+Sobe Postgres embutido, Redis-compatível em TCP e N réplicas (Gunicorn, `GUNICORN_WORKERS` workers cada, padrão 2) do repositorio-service; o Locust balanceia
 entre as réplicas (`BACKENDS`). CSVs e `resumo_local.json` ficam em `loadtest/resultados/`.

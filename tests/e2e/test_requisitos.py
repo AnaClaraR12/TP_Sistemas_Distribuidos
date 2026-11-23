@@ -982,7 +982,10 @@ class TestDashboard:
 
 class TestEscalabilidade:
     def test_replicas_balanceadas_pelo_gateway(self):
+        # sem o docker-compose.override.yml, que fixa a porta 8004 no host (impediria mais de 1 réplica)
         compose(
+            "-f",
+            "docker-compose.yml",
             "up",
             "-d",
             "--no-recreate",
